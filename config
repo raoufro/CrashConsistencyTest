@@ -1,0 +1,29 @@
+# consistency_tests Options
+# log-writes options
+# The partition capturing the write-logs
+LOGDEV="/dev/sdd"
+# The partition on which the captured logs are replayed
+REPLAYDEV="/dev/sdc"
+# log-writes partion name in device mapper
+DEVMAP_LOG_WRITES="log"
+# write-logs device mount point
+CCTESTS_MNT="/mnt/crash_consistency/f2fs"
+
+# xfstest options
+TEST_DEV="/dev/sdc"
+SCRATCH_DEV="/dev/sdd"
+TEST_DIR="/mnt/xfstests/f2fs_TEST"
+SCRATCH_MNT="/mnt/xfstests/f2fs_SCRATCH"
+
+# the options of file system
+FSTYPE="f2fs"
+MKFS_OPTS=""
+MOUNT_OPTS="noatime"
+FSCK="fsck.f2fs"
+FSCK_OPTS=""
+
+# The local root
+LOCALS="/home/roraouf/Projects/CrashConsistencyTest/locals"
+
+# The output directory of xfstest results
+RESULT_DIR="/home/roraouf/Projects/CrashConsistencyTest/results"
