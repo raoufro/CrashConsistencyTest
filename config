@@ -14,6 +14,8 @@ TEST_DEV="/dev/sdc"
 SCRATCH_DEV="/dev/sdd"
 TEST_DIR="/mnt/xfstests/f2fs_TEST"
 SCRATCH_MNT="/mnt/xfstests/f2fs_SCRATCH"
+XFSTESTS_EXCLUDE="./xfstests_exclude"
+CCTESTS_EXCLUDE="./cctests_exclude"
 
 # the options of file system
 FSTYPE="f2fs"
@@ -27,3 +29,6 @@ LOCALS="/home/roraouf/Projects/CrashConsistencyTest/locals"
 
 # The output directory of xfstest results
 RESULT_DIR="/home/roraouf/Projects/CrashConsistencyTest/results"
+
+# Debug Option
+DEBUG="OFF"
