@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 . config || {
 cat << EOF
@@ -8,14 +8,15 @@ EOF
 	exit 1
 }
 
-
+trap "_fail 'CrashConsistencyTest cancelled!'; exit 1" 2 15
 
 _fail()
 {
 	echo $1
-	umount ${DEVMAP_PART} > /dev/null 2>&1
-	dmsetup remove ${DEVMAP_LOG_WRITES} > /dev/null 2>&1
-	exit 1
+	umount $CCTESTS_MNT &> /dev/null
+	dmsetup remove $DEVMAP_LOG_WRITES &> /dev/null
+	losetup -d $COW_LOOP_DEV &> /dev/null
+	rm -f cow-dev &> /dev/null
 }
 
 _test()
@@ -53,7 +54,6 @@ xfstests_config_gen()
 			"MOUNT_OPTTION=\"$MOUNT_OPTS\"\n"\
 			"RESULT_BASE=${RESULT_DIR}/xfstests/${CUR_DATE}\n"\
 			> $XFSTESTS_DIR/"local.config"
-			echo "Hi"
 			;;
 		consistency_tests)
 			echo -e "[${FSTYPE}_consistency]\n"\
@@ -83,7 +83,7 @@ apply_test()
 	# Apply the test and mark it
 	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark $1_start
 	pushd ${XFSTESTS_DIR} > /dev/null
-	./check -E ${CCTESTS_EXCLUDE} -s ${FSTYPE}_consistency generic/$1
+	./check -E ./${CCTESTS_EXCLUDE} -s ${FSTYPE}_consistency $1
 	popd > /dev/null
 	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark $1_end
 
@@ -143,7 +143,6 @@ apply_consistency_test()
 {
 	echo "Replaying mkfs ..."
 	ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark mkfs_end)
-#	${TOOLS_DIR}/replay-log --log $LOGDEV --replay $REPLAYDEV --limit $ENTRY || _fail "mkfs replay failed-$LINENO" 
 	${TOOLS_DIR}/replay-log --log $LOGDEV --replay $REPLAYDEV --end-mark mkfs_end || _fail "mkfs replay failed-$LINENO" 
 
 	START_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark $1_start)
@@ -154,31 +153,18 @@ apply_consistency_test()
 	echo "END_ENTRY is $END_ENTRY"
 
 	${TOOLS_DIR}/replay-log -v --log $LOGDEV --replay $REPLAYDEV --start-mark $1_start\
-		--fsck "./fsck_script.sh" --check 1 || _fail "replay failed"
+		--fsck "$FSCK_SCRIPT" --check 1 || _fail "replay failed"
 
 }
 
 consistency_single()
 {
-	[ -z $LOGDEV ] && exit "Must set LOGDEV and REPLAYDEV"
-	[ -z $REPLAYDEV ] && exit "Must set LOGDEV and REPLAYDEV"
-	[ -z $DEVMAP_LOG_WRITES ] && exit "Must set DEVMAP_LOG_WRITES"
-	[ ! -d $LOCALS ] && exit "Must create LOCALS directory"
-
-	xfstests_config_gen consistency_tests
 	apply_test $1
 	apply_consistency_test $1
-	#old_apply_consistency_test $1
 }
 
 consistency_tests()
 {
-	[ -z $LOGDEV ] && exit "Must set LOGDEV and REPLAYDEV"
-	[ -z $REPLAYDEV ] && exit "Must set LOGDEV and REPLAYDEV"
-	[ -z $DEVMAP_LOG_WRITES ] && exit "Must set DEVMAP_LOG_WRITES"
-	[ ! -d $LOCALS ] && exit "Must create LOCALS directory"
-
-	xfstests_config_gen consistency_tests
 	for aTest in $(ls $XFSTESTS_DIR/tests/generic | egrep "^[0-9]*$" | sort -n); do
 		apply_test $aTest
 		apply_consistency_test $aTest
@@ -230,22 +216,78 @@ ckpt_test()
 	done
 }
 
+consistency()
+{
+	[ -z $LOGDEV ] && exit "Must set LOGDEV and REPLAYDEV"
+	[ -z $REPLAYDEV ] && exit "Must set LOGDEV and REPLAYDEV"
+	[ -z $DEVMAP_LOG_WRITES ] && exit "Must set DEVMAP_LOG_WRITES"
+	[ ! -d $LOCALS ] && exit "Must create LOCALS directory"
+
+	xfstests_config_gen consistency_tests
+	exclude_gen
+
+	# Set up snapshot-origin target for $REPLAYDEV
+	export SNAPSHOTBASE="replay-base"
+	export SNAPSHOTBASE_DEV="/dev/mapper/$SNAPSHOTBASE"
+	BLKSIZE=$(blockdev --getsz $REPLAYDEV)
+	export ORIGIN_TABLE="0 $BLKSIZE snapshot-origin $REPLAYDEV"
+
+	# Create 1TB sparse file as COW device
+	dd if=/dev/zero of=cow-dev bs=1M count=1 seek=1048576 2> /dev/null
+	export COW_LOOP_DEV=$(losetup -f --show cow-dev)
+
+	# Set up snapshot target for
+	export SNAPSHOTCOW="replay-cow"
+	export SNAPSHOTCOW_DEV="/dev/mapper/$SNAPSHOTCOW"
+	export COW_TABLE="0 $BLKSIZE snapshot /dev/mapper/$SNAPSHOTBASE $COW_LOOP_DEV N 8"
+	export TARGET=/dev/mapper/$SNAPSHOTCOW
+
+
+	case $1 in
+		single)
+			consistency_single $2
+			;;
+		all)
+			consistency_tests
+			;;
+		*)
+			print_help
+			;;
+	esac
+
+	losetup -d $COW_LOOP_DEV &> /dev/null
+	rm -f cow-dev
+}
 
 xfstests()
 {
 	[ ! -d $LOCALS ] && exit "Must create LOCALS directory"
 
 	xfstests_config_gen xfstests
-	pushd ${XFSTESTS_DIR}
-	./check -E ${XFSTESTS_EXCLUDE} -s ${FSTYPE}_xfstests
-	popd 
+	exclude_gen
+
+	case $1 in
+		single)
+			pushd ${XFSTESTS_DIR}
+			./check -E ./${XFSTESTS_EXCLUDE} -s ${FSTYPE}_xfstests $2
+			popd
+			;;
+		all)
+			pushd ${XFSTESTS_DIR}
+			./check -E ./${XFSTESTS_EXCLUDE} -s ${FSTYPE}_xfstests
+			popd
+			;;
+		*)
+			print_help
+			;;
+	esac
 }
 
-generate_exclude()
+exclude_gen()
 {
-	# TODO 
+	# TODO
+	cp excludes/{$XFSTESTS_EXCLUDE,$CCTESTS_EXCLUDE} $XFSTESTS_DIR
 }
-
 
 setup_env()
 {
@@ -319,10 +361,13 @@ cat << EOF
 Usage: CrashConsistencyTest [help] 
 	setup_env: set up the environment for test - build and install tools
 	clean: clean the src directories 
-	consistency_single: run single test provided
+	xfstests:
+		all - run all tests related to FSTYPE
+		single test - run a single test
+	consistency: check the consistency of f2fs for each BIOs in
+		all - all generic tests of xfstests
+		single test -  a single test
 	mkfs_ckpt_test: check the CKPT in mkfs_end mark
-	consistency: run generic tests of xfstests in log-writes mode
-	xfstests: run xfstests related to FSTYPE
 	generate_exclude: generate the exclude files of consistency and xfstests
 EOF
 } 
@@ -342,14 +387,13 @@ case $1 in
 	clean)
 		clean
 		;;
-	consistency_single)
-		consistency_single $2
-		;;
 	consistency)
-		consistency_tests
+		shift 1
+		consistency $*
 		;;
 	xfstests)
-		xfstests
+		shift 1
+		xfstests $*
 		;;
 	mkfs_ckpt_test)
 		ckpt_test $2
