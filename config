@@ -23,7 +23,7 @@ FSTYPE="f2fs"
 MKFS_OPTS=""
 MOUNT_OPTS="noatime"
 FSCK="fsck.f2fs"
-FSCK_OPTS=""
+FSCK_OPTS="-r"
 
 # The local root
 LOCALS="/home/roraouf/Projects/CrashConsistencyTest/locals"
@@ -32,4 +32,4 @@ LOCALS="/home/roraouf/Projects/CrashConsistencyTest/locals"
 RESULT_DIR="/home/roraouf/Projects/CrashConsistencyTest/results"
 
 # Debug Option
-_DEBUG="ON"
+_DEBUG="OFF"

@@ -1,5 +1,8 @@
-#!/bin/bash -x
+#!/bin/bash
 
+trap "_cleanup 'CrashConsistencyTest cancelled!'; exit 1" 2 15
+
+. utils/log
 . config || {
 cat << EOF
 	There is no config file in current directory.
@@ -8,16 +11,46 @@ EOF
 	exit 1
 }
 
-trap "_fail 'CrashConsistencyTest cancelled!'; exit 1" 2 15
 
-_fail()
+##############################
+# Clean up before exit
+#
+# $1 - Log Content
+##############################
+_cleanup()
 {
-	echo $1
+	_log $1
 	umount $CCTESTS_MNT &> /dev/null
+	umount $LOGDEV &> /dev/null
+	umount $REPLAYDEV &> /dev/null
 	dmsetup remove $DEVMAP_LOG_WRITES &> /dev/null
 	losetup -d $COW_LOOP_DEV &> /dev/null
 	rm -f cow-dev &> /dev/null
+	cp $EXCLUDE_FILE $TESTS_RESULT_DIR
 }
+
+##############################
+# Do some cleanup operations after fail
+#
+# $1 - Log Content
+##############################
+_fail()
+{
+	_log $1
+	umount $CCTESTS_MNT &> /dev/null
+	dmsetup remove $DEVMAP_LOG_WRITES &> /dev/null
+}
+
+##############################
+# Inform the successful operations
+#
+# $1 - Log Content
+##############################
+_inform()
+{
+	_log $1
+}
+
 
 _test()
 {
@@ -37,12 +70,13 @@ _test()
 	umount ${CCTESTS_MNT}
 }
 
+##############################
+# Generate the configuration file of xfstests
 #
-# $1 - The base directoy for the results of xfstests' local.config
-#
-xfstests_config_gen()
+# $1 - The type of tests
+##############################
+gen_xfstests_config()
 {
-	CUR_DATE='`date +%y%m%d_%H%M%S`'
 	case $1 in
 		xfstests)
 			echo -e "[${FSTYPE}_xfstests]\n"\
@@ -61,170 +95,188 @@ xfstests_config_gen()
 			"TEST_DIR=$CCTESTS_MNT\n"\
 			"FSTYP=$FSTYPE\n"\
 			"MOUNT_OPTTION=\"$MOUNT_OPTS\"\n"\
-			"RESULT_BASE=${RESULT_DIR}/consistency_tests"\
+			"RESULT_BASE=${RESULT_DIR}/consistency_tests/${CUR_DATE}"\
 			> $XFSTESTS_DIR/"local.config"
 			;;
 	esac
 }
+
+#ckpt_test()
+#{
+#	[ -z $LOGDEV ] && exit "Must set LOGDEV and REPLAYDEV"
+#	[ -z $REPLAYDEV ] && exit "Must set LOGDEV and REPLAYDEV"
+#	[ -z $DEVMAP_LOG_WRITES ] && exit "Must set DEVMAP_LOG_WRITES"
+#	[ ! -d $LOCALS ] && exit "Must create LOCALS directory"
+
+#	gen_xfstests_config consistency_tests
+#	apply_test $1
+
+#	echo "***** Replaying mkfs *****"
+#	ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark mkfs_end)
+#	echo "mkfs_end entry is $ENTRY."
+#	${TOOLS_DIR}/replay-log --log $LOGDEV --replay $REPLAYDEV --end-mark mkfs_end || _fail "mkfs replay failed-$LINENO" 
+#	echo "CKPT after mkfs_end"
+#       ${TOOLS_DIR}/dump.f2fs $REPLAYDEV | grep --binary-files=text CKPT
+#	echo
+
+#	echo -e "Replaying test #$1 ...\n"
+#	START_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark $1_start)
+#	END_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark $1_end)
+#	echo "START_ENTRY is $START_ENTRY"
+#	echo "END_ENTRY is $END_ENTRY"
+#	echo
+
+#	sleep 5
+
+#	let ENTRY=START_ENTRY
+#	while [ $ENTRY -lt $END_ENTRY ]; do
+#		echo "***** Entry #$ENTRY *****"
+#		${TOOLS_DIR}/replay-log --limit 1 --log $LOGDEV --replay $REPLAYDEV \
+#			--start $ENTRY || _fail "replay failed"
+#		echo "CKPT after replay"
+#		${TOOLS_DIR}/dump.f2fs $REPLAYDEV | grep --binary-files=text CKPT
+#		${TOOLS_DIR}/${FSCK} $FSCK_OPTS $REPLAYDEV > /dev/null 2>&1
+#		mount -t ${FSTYPE} $REPLAYDEV $CCTESTS_MNT || _fail "mount failed at entry $ENTRY"
+#		umount $CCTESTS_MNT
+#		echo "CKPT after mount/umount"
+#		${TOOLS_DIR}/dump.f2fs $REPLAYDEV | grep --binary-files=text CKPT
+#		${TOOLS_DIR}/${FSCK} $FSCK_OPTS $REPLAYDEV > /dev/null 2>&1
+#		let ENTRY+=1
+#		echo
+#	done
+#}
+
+##############################
+# Run a single generic test of xfstests and
+# log its writes by using log-writes dm target
 #
-# $1 - The number of xfstests' generic test
-#
+# $1 - The test file of xfstests
+##############################
 apply_test()
 {
+	local aTest
+	aTest=$1
+
 	# Create log-writes
 	TABLE="0 ${BLKSIZE} log-writes ${REPLAYDEV} ${LOGDEV}"
-	dmsetup create ${DEVMAP_LOG_WRITES} --table "${TABLE}" > /dev/null || _fail "Failed to setup log-writes target-${LINENO}"
+	dmsetup create ${DEVMAP_LOG_WRITES} --table "${TABLE}" > /dev/null ||\
+	{ _fail "Failed to setup log-writes target."; return 1; }
 
 	# Mark mkfs
-	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark mkfs_start || _fail "Failed to mark the end of mkfs-${LINENO}"
-	${TOOLS_DIR}/mkfs.${FSTYPE} ${DEVMAP_PART} > /dev/null || _fail "Failed to mkfs ${DEVMAP_PART}-${LINENO}"
-	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark mkfs_end || _fail "Failed to mark the end of mkfs-${LINENO}"
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark mkfs_start ||\
+	{ _fail "Failed to mark the start of mkfs."; return 1; }
+
+	${TOOLS_DIR}/mkfs.${FSTYPE} ${DEVMAP_PART} > /dev/null ||\
+	{ _fail "Failed to mkfs ${DEVMAP_PART}."; return 1; }
+
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark mkfs_end ||\
+	{ _fail "Failed to mark the end of mkfs."; return 1; }
 
 	# Apply the test and mark it
-	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark $1_start
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark ${aTest}_start ||\
+	{ _fail "Failed to mark the start of test."; return 1; }
 	pushd ${XFSTESTS_DIR} > /dev/null
-	./check -E ./${CCTESTS_EXCLUDE} -s ${FSTYPE}_consistency $1
+	./check -E ./${CCTESTS_EXCLUDE} -s ${FSTYPE}_consistency ${aTest}
 	popd > /dev/null
-	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark $1_end
-
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark ${aTest}_end ||\
+	{ _fail "Failed to mark the end of test."; return 1; }
 
 	# Remove log-writes
-	dmsetup remove ${DEVMAP_LOG_WRITES}
+	dmsetup remove ${DEVMAP_LOG_WRITES} ||\
+	{ _fail "Failed to remove ${DEVMAP_LOG_WRITES} dm target."; return 1; }
 }
 
+##############################
+# Replay the log of a test
 #
-# Deprecated
-#
-old_apply_consistency_test()
+# $1 - The test file of xfstests
+##############################
+apply_consistency_test()
 {
+	local aTest
+	aTest=$1
+
 	echo "Replaying mkfs ..."
 	ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark mkfs_end)
-	${TOOLS_DIR}/replay-log --log $LOGDEV --replay $REPLAYDEV --limit $ENTRY || _fail "mkfs replay failed-$LINENO" 
+	${TOOLS_DIR}/replay-log --log $LOGDEV --replay $REPLAYDEV --end-mark mkfs_end ||\
+	{ _fail "The replay of mkfs failed."; return 1; }
 
-	START_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark $1_start)
-	END_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark $1_end)
+	START_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark ${aTest}_start)
+	END_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark ${aTest}_end)
 
-	
-	echo -e "Replaying test #$1 ...\n\n"
+	echo "Replaying test $aTest ..."
 	echo "START_ENTRY is $START_ENTRY"
 	echo "END_ENTRY is $END_ENTRY"
-	
-	let ENTRY=START_ENTRY
-	if [[ $DEBUG=="ON" ]]; then
-		while [ $ENTRY -lt $END_ENTRY ]; do
-			echo " Entry #$ENTRY "
-			${TOOLS_DIR}/replay-log --limit 1 --log $LOGDEV --replay $REPLAYDEV \
-				--start $ENTRY || _fail "replay failed"
-			${TOOLS_DIR}/${FSCK} $FSCK_OPTS $REPLAYDEV \
-				|| _fail "fsck failed at entry $ENTRY"
-			mount -t ${FSTYPE} $REPLAYDEV $CCTESTS_MNT || _fail "mount failed at entry $ENTRY"
-			umount $CCTESTS_MNT
-			${TOOLS_DIR}/${FSCK} $FSCK_OPTS $REPLAYDEV \
-				|| _fail "fsck failed after umount at entry $ENTRY"
-			let ENTRY+=1
-		done
+
+	${TOOLS_DIR}/replay-log -v --log $LOGDEV --replay $REPLAYDEV --start-mark ${aTest}_start\
+		--fsck "$FSCK_SCRIPT $XFSTESTS_NUM" --check 1 ||\
+		{ _fail "The replay of xfstests failed."; return 1; }
+}
+
+##############################
+# Run a single generic test of xfstests and
+# verify the consistency of file system during the test
+#
+# $1 - The generic test number of xfstests
+##############################
+consistency_single()
+{
+	local aTest
+	aTest=generic/$1
+
+	apply_test $aTest
+	RET=$?
+
+	if [ $RET -ne 0 ]; then
+		echo "$aTest" >> $CCTESTS_RESULT_DIR/failed_tests
+		_inform "[FAIL] Running $aTest failed."
 	else
-		while [ $ENTRY -lt $END_ENTRY ]; do
-			echo " Entry #$ENTRY "
-			${TOOLS_DIR}/replay-log --limit 1 --log $LOGDEV --replay $REPLAYDEV \
-				--start $ENTRY || _fail "replay failed"
-			${TOOLS_DIR}/${FSCK} $FSCK_OPTS $REPLAYDEV > /dev/null 2>&1 \
-				|| _fail "fsck failed at entry $ENTRY"
-			mount -t ${FSTYPE} $REPLAYDEV $CCTESTS_MNT || _fail "mount failed at entry $ENTRY"
-			umount $CCTESTS_MNT
-			${TOOLS_DIR}/${FSCK} $FSCK_OPTS $REPLAYDEV > /dev/null 2>&1 \
-				|| _fail "fsck failed after umount at entry $ENTRY"
-			let ENTRY+=1
-		done
+		apply_consistency_test $aTest
+		RET=$?
+		if [ $RET -ne 0 ]; then
+			echo "$aTest" >> $CCTESTS_RESULT_DIR/failed_tests
+			_inform "[FAIL] Running $aTest failed."
+		else
+			echo "$aTest" >> $CCTESTS_RESULT_DIR/successful_tests
+			_inform "Running $aTest was successful."
+			echo
+		fi
 	fi
 }
 
-apply_consistency_test()
-{
-	echo "Replaying mkfs ..."
-	ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark mkfs_end)
-	${TOOLS_DIR}/replay-log --log $LOGDEV --replay $REPLAYDEV --end-mark mkfs_end || _fail "mkfs replay failed-$LINENO" 
-
-	START_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark $1_start)
-	END_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark $1_end)
-
-	echo -e "Replaying test #$1 ...\n\n"
-	echo "START_ENTRY is $START_ENTRY"
-	echo "END_ENTRY is $END_ENTRY"
-
-	${TOOLS_DIR}/replay-log -v --log $LOGDEV --replay $REPLAYDEV --start-mark $1_start\
-		--fsck "$FSCK_SCRIPT" --check 1 || _fail "replay failed"
-
-}
-
-consistency_single()
-{
-	apply_test $1
-	apply_consistency_test $1
-}
-
+##############################
+# Run all the generic tests of xfstests and
+# verify the consistency of file system during the tests
+##############################
 consistency_tests()
 {
+	local aTest
 	for aTest in $(ls $XFSTESTS_DIR/tests/generic | egrep "^[0-9]*$" | sort -n); do
-		apply_test $aTest
-		apply_consistency_test $aTest
+		consistency_single $aTest
 	done
 }
 
-ckpt_test()
-{
-	[ -z $LOGDEV ] && exit "Must set LOGDEV and REPLAYDEV"
-	[ -z $REPLAYDEV ] && exit "Must set LOGDEV and REPLAYDEV"
-	[ -z $DEVMAP_LOG_WRITES ] && exit "Must set DEVMAP_LOG_WRITES"
-	[ ! -d $LOCALS ] && exit "Must create LOCALS directory"
-
-	xfstests_config_gen consistency_tests
-	apply_test $1
-
-	echo "***** Replaying mkfs *****"
-	ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark mkfs_end)
-	echo "mkfs_end entry is $ENTRY."
-	${TOOLS_DIR}/replay-log --log $LOGDEV --replay $REPLAYDEV --end-mark mkfs_end || _fail "mkfs replay failed-$LINENO" 
-	echo "CKPT after mkfs_end"
-        ${TOOLS_DIR}/dump.f2fs $REPLAYDEV | grep --binary-files=text CKPT
-	echo 
-
-	echo -e "Replaying test #$1 ...\n"
-	START_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark $1_start)
-	END_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark $1_end)
-	echo "START_ENTRY is $START_ENTRY"
-	echo "END_ENTRY is $END_ENTRY"
-	echo 
-
-	sleep 5
-
-	let ENTRY=START_ENTRY
-	while [ $ENTRY -lt $END_ENTRY ]; do
-		echo "***** Entry #$ENTRY *****"
-		${TOOLS_DIR}/replay-log --limit 1 --log $LOGDEV --replay $REPLAYDEV \
-			--start $ENTRY || _fail "replay failed"
-		echo "CKPT after replay"
-		${TOOLS_DIR}/dump.f2fs $REPLAYDEV | grep --binary-files=text CKPT
-		${TOOLS_DIR}/${FSCK} $FSCK_OPTS $REPLAYDEV > /dev/null 2>&1
-		mount -t ${FSTYPE} $REPLAYDEV $CCTESTS_MNT || _fail "mount failed at entry $ENTRY"
-		umount $CCTESTS_MNT
-		echo "CKPT after mount/umount"
-		${TOOLS_DIR}/dump.f2fs $REPLAYDEV | grep --binary-files=text CKPT
-		${TOOLS_DIR}/${FSCK} $FSCK_OPTS $REPLAYDEV > /dev/null 2>&1
-		let ENTRY+=1
-		echo
-	done
-}
-
+##############################
+# Run consistency tests
+#
+# $1 single/all
+# $2 the name of xfstests for single mode
+##############################
 consistency()
 {
-	[ -z $LOGDEV ] && exit "Must set LOGDEV and REPLAYDEV"
-	[ -z $REPLAYDEV ] && exit "Must set LOGDEV and REPLAYDEV"
-	[ -z $DEVMAP_LOG_WRITES ] && exit "Must set DEVMAP_LOG_WRITES"
-	[ ! -d $LOCALS ] && exit "Must create LOCALS directory"
+	[ -z $LOGDEV ] && (_fail "Must set LOGDEV and REPLAYDEV."; exit 1)
+	[ -z $REPLAYDEV ] && (_fail "Must set LOGDEV and REPLAYDEV."; exit 1)
+	[ -z $DEVMAP_LOG_WRITES ] && (_fail "Must set DEVMAP_LOG_WRITES."; exit 1)
+	[ ! -d $LOCALS ] && (_fail "Must create LOCALS directory."; exit 1)
 
-	xfstests_config_gen consistency_tests
-	exclude_gen
+	mkdir -p $CCTESTS_RESULT_DIR
+	gen_xfstests_config consistency_tests
+	gen_exclude
+	# export variables to be accessible to the fsck_script
+	export EXCLUDE_FILE=${PWD}/excludes/$CCTESTS_EXCLUDE
+	export TESTS_RESULT_DIR=$CCTESTS_RESULT_DIR
+	export TESTS_LOG=$CCTESTS_RESULT_DIR/log
+
 
 	# Set up snapshot-origin target for $REPLAYDEV
 	export SNAPSHOTBASE="replay-base"
@@ -242,7 +294,6 @@ consistency()
 	export COW_TABLE="0 $BLKSIZE snapshot /dev/mapper/$SNAPSHOTBASE $COW_LOOP_DEV N 8"
 	export TARGET=/dev/mapper/$SNAPSHOTCOW
 
-
 	case $1 in
 		single)
 			consistency_single $2
@@ -255,16 +306,30 @@ consistency()
 			;;
 	esac
 
-	losetup -d $COW_LOOP_DEV &> /dev/null
-	rm -f cow-dev
+	_cleanup "Cleaning up after consistency test."
 }
 
+##############################
+# Run xfstests
+#
+# $1 single/all
+# $2 the name of xfstests for single mode (e.g. generic/009)
+##############################
 xfstests()
 {
-	[ ! -d $LOCALS ] && exit "Must create LOCALS directory"
+	local aTest
+	[ ! -d $LOCALS ] &&  (_fail "Must create LOCALS directory."; exit 1)
 
-	xfstests_config_gen xfstests
-	exclude_gen
+	${TOOLS_DIR}/mkfs.${FSTYPE} ${LOGDEV} &> /dev/null
+	${TOOLS_DIR}/mkfs.${FSTYPE} ${REPLAYDEV} &> /dev/null
+
+	mkdir -p $XFSTESTS_RESULT_DIR
+	gen_xfstests_config xfstests
+	gen_exclude
+
+	export EXCLUDE_FILE=${PWD}/excludes/$XFSTESTS_EXCLUDE
+	export TESTS_RESULT_DIR=$XFSTESTS_RESULT_DIR
+	export TESTS_LOG=$XFSTESTS_RESULT_DIR/log	# TODO - Log operations
 
 	case $1 in
 		single)
@@ -281,11 +346,15 @@ xfstests()
 			print_help
 			;;
 	esac
+
+	_cleanup "Cleaning up after xfstests."
 }
 
-exclude_gen()
+##############################
+# copy the files containg the excluded tests to xfstests' root directory
+##############################
+gen_exclude()
 {
-	# TODO
 	cp excludes/{$XFSTESTS_EXCLUDE,$CCTESTS_EXCLUDE} $XFSTESTS_DIR
 }
 
@@ -294,7 +363,7 @@ setup_env()
 	mkdir -p $LOCALS
 	pushd src
 	
-	tar xzvf f2fs-tools.v1.8.0.tar.gz
+	tar xzvf f2fs-tools-v1.8.0.tar.gz
 	pushd f2fs-tools-v1.8.0
 	./autogen.sh
 	./configure
@@ -363,22 +432,21 @@ Usage: CrashConsistencyTest [help]
 	clean: clean the src directories 
 	xfstests:
 		all - run all tests related to FSTYPE
-		single test - run a single test
+		single test - run a single test (mention the complete name of test)
 	consistency: check the consistency of f2fs for each BIOs in
 		all - all generic tests of xfstests
 		single test -  a single test
-	mkfs_ckpt_test: check the CKPT in mkfs_end mark
-	generate_exclude: generate the exclude files of consistency and xfstests
 EOF
 } 
-
-
 
 export BLKSIZE=$(blockdev --getsz $REPLAYDEV)
 export DEVMAP_PART="/dev/mapper/${DEVMAP_LOG_WRITES}"
 export TOOLS_DIR="${LOCALS}/usr/local/sbin"
 export LIB_DIR="${LOCALS}/usr/local/lib"
 export XFSTESTS_DIR="${LOCALS}/var/lib/xfstests"
+CUR_DATE=`date +%y%m%d_%H%M%S`
+XFSTESTS_RESULT_DIR=$RESULT_DIR/xfstests/$CUR_DATE
+CCTESTS_RESULT_DIR=$RESULT_DIR/consistency_tests/$CUR_DATE
 
 case $1 in 
 	setup_env)
@@ -387,17 +455,18 @@ case $1 in
 	clean)
 		clean
 		;;
-	consistency)
-		shift 1
-		consistency $*
-		;;
 	xfstests)
 		shift 1
 		xfstests $*
 		;;
-	mkfs_ckpt_test)
-		ckpt_test $2
+	consistency)
+		shift 1
+		consistency $*
 		;;
+#	mkfs_ckpt_test)
+#		shift 1
+#		ckpt_test $*
+#		;;
 	*)
 		print_help
 		;;
