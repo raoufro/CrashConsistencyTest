@@ -4,3 +4,4 @@ src/xfstests-f2fs
 locals/
 results/
 TODO
+cow-dev
