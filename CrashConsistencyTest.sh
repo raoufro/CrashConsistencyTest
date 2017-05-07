@@ -85,7 +85,7 @@ gen_xfstests_config()
 			"SCRATCH_DEV=${SCRATCH_DEV}\n"\
 			"SCRATCH_MNT=${SCRATCH_MNT}\n"\
 			"FSTYP=$FSTYPE\n"\
-			"MOUNT_OPTTION=\"$MOUNT_OPTS\"\n"\
+			"MOUNT_OPTIONS=\"$MOUNT_OPTS\"\n"\
 			"RESULT_BASE=${RESULT_DIR}/xfstests/${CUR_DATE}\n"\
 			> $XFSTESTS_DIR/"local.config"
 			;;
@@ -94,7 +94,7 @@ gen_xfstests_config()
 			"TEST_DEV=$DEVMAP_PART\n"\
 			"TEST_DIR=$CCTESTS_MNT\n"\
 			"FSTYP=$FSTYPE\n"\
-			"MOUNT_OPTTION=\"$MOUNT_OPTS\"\n"\
+			"MOUNT_OPTIONS=\"$MOUNT_OPTS\"\n"\
 			"RESULT_BASE=${RESULT_DIR}/consistency_tests/${CUR_DATE}"\
 			> $XFSTESTS_DIR/"local.config"
 			;;
@@ -371,6 +371,16 @@ setup_env()
 	make install DESTDIR="$LOCALS"
 	popd
 
+	tar xzvf e2fsprogs-v1.43.4.tar.gz
+	pushd e2fsprogs-v1.43.4
+	mkdir build
+	pushd build
+	../configure
+	make
+	make install DESTDIR="$LOCALS/usr/local"
+	popd
+	popd
+
 	tar xzvf xfstests-f2fs.tar.gz
 	pushd xfstests-f2fs
 	make
@@ -447,6 +457,10 @@ export XFSTESTS_DIR="${LOCALS}/var/lib/xfstests"
 CUR_DATE=`date +%y%m%d_%H%M%S`
 XFSTESTS_RESULT_DIR=$RESULT_DIR/xfstests/$CUR_DATE
 CCTESTS_RESULT_DIR=$RESULT_DIR/consistency_tests/$CUR_DATE
+
+[ -d $CCTESTS_MNT ] || mkdir -p $CCTESTS_MNT
+[ -d $TEST_DIR ] || mkdir -p $TEST_DIR
+[ -d $SCRATCH_MNT ] || mkdir -p $SCRATCH_MNT
 
 case $1 in 
 	setup_env)
