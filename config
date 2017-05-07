@@ -1,3 +1,12 @@
+# the options of file system
+#FSCK_SCRIPT="./fsck_scripts/fsck_inconsistent.sh"
+FSCK_SCRIPT="./fsck_scripts/fsck_snap.sh"
+FSTYPE="ext4"
+MKFS_OPTS="-F"
+MOUNT_OPTS="-o noatime,norecovery"
+FSCK="fsck.ext4"
+FSCK_OPTS="-y"
+
 # consistency_tests Options
 # log-writes options
 # The partition capturing the write-logs
@@ -7,23 +16,15 @@ REPLAYDEV="/dev/sdc"
 # log-writes partion name in device mapper
 DEVMAP_LOG_WRITES="log"
 # write-logs device mount point
-CCTESTS_MNT="/mnt/crash_consistency/f2fs"
+CCTESTS_MNT="/mnt/crash_consistency/${FSTYPE}"
 
 # xfstest options
 TEST_DEV="/dev/sdc"
 SCRATCH_DEV="/dev/sdd"
-TEST_DIR="/mnt/xfstests/f2fs_TEST"
-SCRATCH_MNT="/mnt/xfstests/f2fs_SCRATCH"
+TEST_DIR="/mnt/xfstests/${FSTYPE}_TEST"
+SCRATCH_MNT="/mnt/xfstests/${FSTYPE}_SCRATCH"
 XFSTESTS_EXCLUDE="xfstests_exclude"
 CCTESTS_EXCLUDE="cctests_exclude"
-
-# the options of file system
-FSCK_SCRIPT="./fsck_scripts/fsck_snap.sh"
-FSTYPE="f2fs"
-MKFS_OPTS=""
-MOUNT_OPTS="noatime"
-FSCK="fsck.f2fs"
-FSCK_OPTS="-r"
 
 # The local root
 LOCALS="/home/roraouf/Projects/CrashConsistencyTest/locals"
@@ -32,4 +33,4 @@ LOCALS="/home/roraouf/Projects/CrashConsistencyTest/locals"
 RESULT_DIR="/home/roraouf/Projects/CrashConsistencyTest/results"
 
 # Debug Option
-_DEBUG="OFF"
+_DEBUG="ON"
