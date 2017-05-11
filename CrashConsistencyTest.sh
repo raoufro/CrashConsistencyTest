@@ -101,6 +101,18 @@ gen_xfstests_config()
 	esac
 }
 
+##############################
+# Generate the configuration file of dbtests
+##############################
+gen_dbtests_config()
+{
+	echo -e	"sysbench_lua_script=${LOCALS}/${LUA_SCRIPT}\n"\
+	"mount_point=${CCTESTS_MNT}\n"\
+	"result_dir=${CCTESTS_RESULT_DIR}/dbtests"\
+	> $DBTESTS_DIR/".config"
+}
+
+
 #ckpt_test()
 #{
 #	[ -z $LOGDEV ] && exit "Must set LOGDEV and REPLAYDEV"
@@ -191,6 +203,41 @@ apply_test()
 #
 # $1 - The test file of xfstests
 ##############################
+apply_consistency_test_upto()
+{
+	local aTest
+	aTest=$1
+
+	local ENTRY
+	ENTRY=0
+
+	local START_ENTRY
+	local END_ENTRY
+	START_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark ${aTest}_start)
+	END_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark ${aTest}_end)
+
+	echo "Replaying test $aTest ..."
+	echo "START_ENTRY is $START_ENTRY"
+	echo "END_ENTRY is $END_ENTRY"
+
+	read -p "Enter the entry number to start from consistency test:" ENTRY
+	${TOOLS_DIR}/replay-log --log $LOGDEV --replay $REPLAYDEV --limit $ENTRY ||\
+	{ _fail "The replay of mkfs failed."; return 1; }
+
+	echo "Replayed upto $ENTRY"
+
+	ENTRY=$((ENTRY+1))
+	${TOOLS_DIR}/replay-log -v --log $LOGDEV --replay $REPLAYDEV --start-entry $ENTRY\
+		--fsck "$FSCK_SCRIPT" --check 1 ||\
+		{ _fail "The replay of xfstests failed."; return 1; }
+}
+
+
+##############################
+# Replay the log of a test
+#
+# $1 - The test file of xfstests
+##############################
 apply_consistency_test()
 {
 	local aTest
@@ -209,7 +256,7 @@ apply_consistency_test()
 	echo "END_ENTRY is $END_ENTRY"
 
 	${TOOLS_DIR}/replay-log -v --log $LOGDEV --replay $REPLAYDEV --start-mark ${aTest}_start\
-		--fsck "$FSCK_SCRIPT $XFSTESTS_NUM" --check 1 ||\
+		--fsck "$FSCK_SCRIPT" --check 1 ||\
 		{ _fail "The replay of xfstests failed."; return 1; }
 }
 
@@ -245,6 +292,38 @@ consistency_single()
 }
 
 ##############################
+# Run a single generic test of xfstests and
+# verify the consistency of file system during the test
+#
+# $1 - The generic test number of xfstests
+##############################
+consistency_single_upto()
+{
+	local aTest
+	aTest=generic/$1
+
+	apply_test $aTest
+	RET=$?
+
+	if [ $RET -ne 0 ]; then
+		echo "$aTest" >> $CCTESTS_RESULT_DIR/failed_tests
+		_inform "[FAIL] Running $aTest failed."
+	else
+		apply_consistency_test_upto $aTest
+		RET=$?
+		if [ $RET -ne 0 ]; then
+			echo "$aTest" >> $CCTESTS_RESULT_DIR/failed_tests
+			_inform "[FAIL] Running $aTest failed."
+		else
+			echo "$aTest" >> $CCTESTS_RESULT_DIR/successful_tests
+			_inform "Running $aTest was successful."
+			echo
+		fi
+	fi
+}
+
+
+##############################
 # Run all the generic tests of xfstests and
 # verify the consistency of file system during the tests
 ##############################
@@ -255,6 +334,96 @@ consistency_tests()
 		consistency_single $aTest
 	done
 }
+
+##############################
+# $1 - the number of threads
+##############################
+apply_db_test()
+{
+	local aTest
+	local threads
+	aTest=db-$1
+	threads=$1
+
+	# Create log-writes
+	TABLE="0 ${BLKSIZE} log-writes ${REPLAYDEV} ${LOGDEV}"
+	dmsetup create ${DEVMAP_LOG_WRITES} --table "${TABLE}" > /dev/null ||\
+	{ _fail "Failed to setup log-writes target."; return 1; }
+
+	# Mark mkfs
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark mkfs_start ||\
+	{ _fail "Failed to mark the start of mkfs."; return 1; }
+
+	${TOOLS_DIR}/mkfs.${FSTYPE} ${DEVMAP_PART} > /dev/null ||\
+	{ _fail "Failed to mkfs ${DEVMAP_PART}."; return 1; }
+
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark mkfs_end ||\
+	{ _fail "Failed to mark the end of mkfs."; return 1; }
+
+	# Mount FS
+	mount -t ${FSTYPE} ${MOUNT_OPTS} ${DEVMAP_PART} ${CCTESTS_MNT}
+
+	# Apply the test and mark it
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark ${aTest}_start ||\
+	{ _fail "Failed to mark the start of test."; return 1; }
+	pushd ${DBTESTS_DIR} > /dev/null
+	./sysbench-mysql $threads $RECORDS $TRANS
+	popd > /dev/null
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark ${aTest}_end ||\
+	{ _fail "Failed to mark the end of test."; return 1; }
+
+	# Umount FS
+	umount ${CCTESTS_MNT}
+
+	# Remove log-writes
+	dmsetup remove ${DEVMAP_LOG_WRITES} ||\
+	{ _fail "Failed to remove ${DEVMAP_LOG_WRITES} dm target."; return 1; }
+}
+
+##############################
+# Run sysbench database benchmark for one time
+# verify the consistency of file system during the test
+#
+# $1 - The number of thread
+##############################
+consistency_db_single()
+{
+	local aTest
+	aTest=db-$1
+
+	apply_db_test $1
+	RET=$?
+
+	if [ $RET -ne 0 ]; then
+		echo "$aTest" >> $CCTESTS_RESULT_DIR/failed_tests
+		_inform "[FAIL] Running $aTest failed."
+	else
+		apply_consistency_test $aTest
+		RET=$?
+		if [ $RET -ne 0 ]; then
+			echo "$aTest" >> $CCTESTS_RESULT_DIR/failed_tests
+			_inform "[FAIL] Running $aTest failed."
+		else
+			echo "$aTest" >> $CCTESTS_RESULT_DIR/successful_tests
+			_inform "Running $aTest was successful."
+			echo
+		fi
+	fi
+}
+
+
+##############################
+# Run sysbench database benchmark multiple times by using the provided number
+# of THREADS and verify the consistency of file system during the tests
+##############################
+consistency_db()
+{
+	gen_dbtests_config
+	for i in ${THREADS}; do
+		consistency_db_single $i 
+	done
+}
+
 
 ##############################
 # Run consistency tests
@@ -298,8 +467,14 @@ consistency()
 		single)
 			consistency_single $2
 			;;
+		single_upto)
+			consistency_single_upto $2
+			;;
 		all)
 			consistency_tests
+			;;
+		db)
+			consistency_db
 			;;
 		*)
 			print_help
@@ -308,6 +483,7 @@ consistency()
 
 	_cleanup "Cleaning up after consistency test."
 }
+
 
 ##############################
 # Run xfstests
@@ -393,6 +569,9 @@ setup_env()
 	install -m 755 replay-log $LOCALS/usr/local/sbin
 	popd
 
+	tar xzvf dbtests.tar.gz
+	cp -pr dbtests $LOCALS/var/lib
+
 	popd
 
 	ldconfig $LIB_DIR
@@ -414,6 +593,14 @@ clean()
 		make clean
 		popd
 	}
+
+	[[ -d e2fsprogs-v1.43.4 ]] && 
+	{
+		pushd e2fsprogs-v1.43.4 
+		make clean
+		popd
+	}
+
 
 
 	[[ -d xfstests-f2fs ]] &&
@@ -446,6 +633,8 @@ Usage: CrashConsistencyTest [help]
 	consistency: check the consistency of f2fs for each BIOs in
 		all - all generic tests of xfstests
 		single test -  a single test
+		single_upto test - a single test from an entry
+		db - a sysbench benchmark
 EOF
 } 
 
@@ -454,6 +643,7 @@ export DEVMAP_PART="/dev/mapper/${DEVMAP_LOG_WRITES}"
 export TOOLS_DIR="${LOCALS}/usr/local/sbin"
 export LIB_DIR="${LOCALS}/usr/local/lib"
 export XFSTESTS_DIR="${LOCALS}/var/lib/xfstests"
+export DBTESTS_DIR="${LOCALS}/var/lib/dbtests"
 CUR_DATE=`date +%y%m%d_%H%M%S`
 XFSTESTS_RESULT_DIR=$RESULT_DIR/xfstests/$CUR_DATE
 CCTESTS_RESULT_DIR=$RESULT_DIR/consistency_tests/$CUR_DATE

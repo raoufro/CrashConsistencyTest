@@ -1,11 +1,11 @@
 # the options of file system
 #FSCK_SCRIPT="./fsck_scripts/fsck_inconsistent.sh"
 FSCK_SCRIPT="./fsck_scripts/fsck_snap.sh"
-FSTYPE="ext4"
-MKFS_OPTS="-F"
-MOUNT_OPTS="-o noatime,norecovery"
-FSCK="fsck.ext4"
-FSCK_OPTS="-y"
+FSTYPE="f2fs"
+MKFS_OPTS=""
+MOUNT_OPTS=""
+FSCK="fsck.f2fs"
+FSCK_OPTS="-r"
 
 # consistency_tests Options
 # log-writes options
@@ -18,13 +18,19 @@ DEVMAP_LOG_WRITES="log"
 # write-logs device mount point
 CCTESTS_MNT="/mnt/crash_consistency/${FSTYPE}"
 
-# xfstest options
+# xfstests options
 TEST_DEV="/dev/sdc"
 SCRATCH_DEV="/dev/sdd"
 TEST_DIR="/mnt/xfstests/${FSTYPE}_TEST"
 SCRATCH_MNT="/mnt/xfstests/${FSTYPE}_SCRATCH"
 XFSTESTS_EXCLUDE="xfstests_exclude"
 CCTESTS_EXCLUDE="cctests_exclude"
+
+# dbtests options
+LUA_SCRIPT="var/lib/dbtests/sysbench-lua/tests/db/oltp_write_only.lua"
+THREADS="1 4"
+RECORDS="1000"
+TRANS="100"
 
 # The local root
 LOCALS="/home/roraouf/Projects/CrashConsistencyTest/locals"
@@ -33,4 +39,4 @@ LOCALS="/home/roraouf/Projects/CrashConsistencyTest/locals"
 RESULT_DIR="/home/roraouf/Projects/CrashConsistencyTest/results"
 
 # Debug Option
-_DEBUG="ON"
+_DEBUG="OFF"
