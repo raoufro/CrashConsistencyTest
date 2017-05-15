@@ -15,7 +15,19 @@ _fail()
 	fi
 }
 
+# Check the consistency of file system
+if [ $DEBUG == "ON" ]; then
+	FSCK_DEBUG="| tee -a"
+else
+	FSCK_DEBUG=">>"
+fi
+
+
 echo "########## REPLAYING $ENTRY_NUM ##########" >> ${TESTS_FSCK_LOG}
+echo "########## REPLAYING $ENTRY_NUM ##########" >> ${TESTS_CKPT_LOG}
+
+CKPT=$(${TOOLS_DIR}/dump.f2fs $REPLAYDEV | grep --binary-files=text CKPT | cut -d= -f2)
+echo -e "CKPT of REPLAYDEV: $CKPT" >> ${TESTS_CKPT_LOG}
 
 # Create snapshot-origin and snapshot targets to prevent changing
 # the disk layout and specifically CKPT after each mount and umount
@@ -37,12 +49,8 @@ if [ $? -ne 0 ]; then
 		{ _fail "Creating snapshot target failed at entry $ENTRY_NUM."; exit -1; }
 fi
 
-# Check the consistency of file system
-if [ $DEBUG == "ON" ]; then
-	FSCK_DEBUG="| tee -a"
-else
-	FSCK_DEBUG=">>"
-fi
+CKPT=$(${TOOLS_DIR}/dump.f2fs $TARGET | grep --binary-files=text CKPT | cut -d= -f2)
+echo -e "CKPT of SNAPSHOTCOW: $CKPT" >> ${TESTS_CKPT_LOG}
 
 eval ${TOOLS_DIR}/${FSCK} $FSCK_OPTS $TARGET ${FSCK_DEBUG} ${TESTS_FSCK_LOG} ||\
 	{ _fail "fsck failed at entry $ENTRY_NUM."; exit -1; }
@@ -57,6 +65,9 @@ if [ $? -ne 0 ]; then
 	umount $MNT &> /dev/null ||\
 	{ _fail "umount failed at entry $ENTRY_NUM."; exit -1; }
 fi
+
+CKPT=$(${TOOLS_DIR}/dump.f2fs $TARGET | grep --binary-files=text CKPT | cut -d= -f2)
+echo -e "CKPT of SNAPSHOTCOW after mount/umount: $CKPT" >> ${TESTS_CKPT_LOG}
 
 eval ${TOOLS_DIR}/${FSCK} $FSCK_OPTS $TARGET ${FSCK_DEBUG} ${TESTS_FSCK_LOG} ||\
 	{ _fail "fsck failed at entry $ENTRY_NUM."; exit -1; }
@@ -75,3 +86,6 @@ if [ $? -ne 0 ]; then
 	dmsetup remove $SNAPSHOTBASE  || \
 { _fail "Removing snapshot-origing failed at entry $ENTRY_NUM."; exit -1; }
 fi
+
+CKPT=$(${TOOLS_DIR}/dump.f2fs $REPLAYDEV | grep --binary-files=text CKPT | cut -d= -f2)
+echo -e "CKPT of REPLAYDEV: $CKPT" >> ${TESTS_CKPT_LOG}
