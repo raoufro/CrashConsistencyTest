@@ -1,6 +1,6 @@
 #!/bin/bash
 
-. config
+. fsck_scripts/fsck_config
 . utils/log
 
 trap "_fail 'fsck_inconsistent cancelled!'; exit -1;" 2 15
@@ -9,21 +9,22 @@ _fail()
 	_log $1
 }
 
-# Check the consistency of file system
-[ $_DEBUG == "OFF" ] && FSCK_DEBUG="> /dev/null 2>&1"
+echo "########## REPLAYING $ENTRY_NUM ##########" >> ${TESTS_FSCK_LOG}
 
-eval ${TOOLS_DIR}/${FSCK} $FSCK_OPTS $REPLAYDEV "${FSCK_DEBUG}"	||\
+# Check the consistency of file system
+
+eval ${TOOLS_DIR}/${FSCK} $FSCK_OPTS $TARGET >> ${TESTS_FSCK_LOG} ||\
 	{ _fail "fsck failed at entry $ENTRY_NUM."; exit -1; }
 
-mount -t ${FSTYPE} $REPLAYDEV $CCTESTS_MNT ||\
+mount -t ${FSTYPE} $TARGET $MNT ||\
 	{ _fail "mount failed at entry $ENTRY_NUM."; exit -1; }
 
-umount $CCTESTS_MNT &> /dev/null
+umount $MNT &> /dev/null
 if [ $? -ne 0 ]; then
 	sleep 1
-	umount $CCTESTS_MNT ||\
+	umount $MNT ||\
 	{ _fail "umount failed at entry $ENTRY_NUM."; exit -1; }
 fi
 
-eval ${TOOLS_DIR}/${FSCK} $FSCK_OPTS $REPLAYDEV "${FSCK_DEBUG}" ||\
+eval ${TOOLS_DIR}/${FSCK} $FSCK_OPTS $TARGET >> ${TESTS_FSCK_LOG} ||\
 	{ _fail "fsck failed at entry $ENTRY_NUM."; exit -1; }

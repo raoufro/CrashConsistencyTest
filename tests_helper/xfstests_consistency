@@ -1,0 +1,131 @@
+##############################
+# Run all the generic tests of xfstests and
+# verify the consistency of file system during the tests
+##############################
+consistency_tests()
+{
+	local aTest
+	for aTest in $(ls $XFSTESTS_DIR/tests/generic | egrep "^[0-9]*$" | sort -n); do
+		consistency_single $aTest 0
+	done
+}
+
+##############################
+# Run a single generic test of xfstests and
+# verify the consistency of file system during the test
+#
+# $1 - The generic test number of xfstests
+# $2 - replaying upto an entry mode flag
+##############################
+consistency_single()
+{
+	local aTest
+	aTest=generic/$1
+
+	local UPTO
+	UPTO=$2
+
+	apply_test $aTest
+	RET=$?
+
+	if [ $RET -ne 0 ]; then
+		echo "$aTest" >> $TESTS_RESULT_DIR/failed_tests
+		_inform "[FAIL] Running $aTest failed."
+	else
+		apply_consistency_test $aTest $UPTO
+		RET=$?
+		if [ $RET -ne 0 ]; then
+			echo "$aTest" >> $TESTS_RESULT_DIR/failed_tests
+			_inform "[FAIL] Running $aTest failed."
+		else
+			echo "$aTest" >> $TESTS_RESULT_DIR/successful_tests
+			_inform "Running $aTest was successful."
+		fi
+	fi
+}
+
+##############################
+# Run a single generic test of xfstests and
+# log its writes by using log-writes dm target
+#
+# $1 - The test file of xfstests
+##############################
+apply_test()
+{
+	local aTest
+	aTest=$1
+
+	# Create log-writes
+	TABLE="0 ${BLKSIZE} log-writes ${REPLAYDEV} ${LOGDEV}"
+	dmsetup create ${DEVMAP_LOG_WRITES} --table "${TABLE}" > /dev/null ||\
+	{ _fail "Failed to setup log-writes target."; return 1; }
+
+	# Mark mkfs
+	${TOOLS_DIR}/mkfs.${FSTYPE} ${DEVMAP_PART} > /dev/null ||\
+	{ _fail "Failed to mkfs ${DEVMAP_PART}."; return 1; }
+
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark mkfs ||\
+	{ _fail "Failed to mark the end of mkfs."; return 1; }
+
+	# Apply the test and mark it
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark ${aTest}_start ||\
+	{ _fail "Failed to mark the start of test."; return 1; }
+	pushd ${XFSTESTS_DIR} > /dev/null
+	./check -E ./${CCTESTS_EXCLUDE} -s ${FSTYPE}_consistency ${aTest}
+	popd > /dev/null
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark ${aTest}_end ||\
+	{ _fail "Failed to mark the end of test."; return 1; }
+
+	# Remove log-writes
+	dmsetup remove ${DEVMAP_LOG_WRITES} ||\
+	{ _fail "Failed to remove ${DEVMAP_LOG_WRITES} dm target."; return 1; }
+}
+
+##############################
+# Replay the log of a test
+#
+# $1 - The test file of xfstests
+# $2 - replaying upto an entry mode flag
+##############################
+apply_consistency_test()
+{
+	local aTest
+	aTest=$1
+	
+	local UPTO
+	UPTO=$2
+
+	echo "Replaying mkfs ..."
+	${TOOLS_DIR}/replay-log -v --log $LOGDEV --replay $REPLAYDEV --end-mark mkfs ||\
+	{ _fail "The replay of mkfs failed."; return 1; }
+
+	START_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark ${aTest}_start)
+	END_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark ${aTest}_end)
+
+	echo "Replaying test $aTest ..."
+	echo "START_ENTRY is $START_ENTRY"
+	echo "END_ENTRY is $END_ENTRY"
+
+	if [ $UPTO -eq 1 ]; then
+		read -p "Enter the entry number to start from consistency test:" ENTRY
+		if [ $ENTRY -lt $START_ENTRY -o $ENTRY -gt $END_ENTRY ]; then
+			_fail "Wrong input entry."
+			return 1
+		fi
+		DIFF_ENTRY=$((ENTRY - START_ENTRY + 1))
+		${TOOLS_DIR}/replay-log -v --log $LOGDEV --replay $REPLAYDEV --start-entry $START_ENTRY --limit $DIFF_ENTRY ||\
+		{ _fail "The replay of mkfs failed."; return 1; }
+
+		echo "Replayed upto $ENTRY"
+
+		ENTRY=$((ENTRY+1))
+	else
+		ENTRY=$START_ENTRY
+	fi
+
+	${TOOLS_DIR}/replay-log -v --log $LOGDEV --replay $REPLAYDEV --start-entry $ENTRY\
+		--fsck "$FSCK_SCRIPT" --check 1 ||\
+		{ _fail "The replay of xfstests failed."; return 1; }
+	echo "************************ $aTest **************************" >> $TESTS_FSCK_LOG
+	echo "************************ $aTest **************************" >> $TESTS_CKPT_LOG
+}

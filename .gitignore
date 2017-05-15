@@ -7,3 +7,6 @@ locals/
 results/
 TODO
 cow-dev
+fsck_scripts/fsck_config
+multiple_run.sh
+

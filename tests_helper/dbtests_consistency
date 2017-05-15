@@ -1,0 +1,83 @@
+##############################
+# Run sysbench database benchmark multiple times by using the provided number
+# of THREADS and verify the consistency of file system during the tests
+##############################
+consistency_db()
+{
+	for i in ${THREADS}; do
+		consistency_db_single $i
+	done
+}
+
+##############################
+# Run sysbench database benchmark for one time
+# verify the consistency of file system during the test
+#
+# $1 - The number of thread
+##############################
+consistency_db_single()
+{
+	local aTest
+	aTest=db-$1
+
+	apply_db_test $1
+	RET=$?
+
+	if [ $RET -ne 0 ]; then
+		echo "$aTest" >> $TESTS_RESULT_DIR/failed_tests
+		_inform "[FAIL] Running $aTest failed."
+	else
+		apply_consistency_test $aTest 0
+		RET=$?
+		if [ $RET -ne 0 ]; then
+			echo "$aTest" >> $TESTS_RESULT_DIR/failed_tests
+			_inform "[FAIL] Running $aTest failed."
+		else
+			echo "$aTest" >> $TESTS_RESULT_DIR/successful_tests
+			_inform "Running $aTest was successful."
+			echo
+		fi
+	fi
+}
+
+##############################
+# $1 - the number of threads
+##############################
+apply_db_test()
+{
+	local aTest
+	local threads
+	aTest=db-$1
+	threads=$1
+
+	# Create log-writes
+	TABLE="0 ${BLKSIZE} log-writes ${REPLAYDEV} ${LOGDEV}"
+	dmsetup create ${DEVMAP_LOG_WRITES} --table "${TABLE}" > /dev/null ||\
+	{ _fail "Failed to setup log-writes target."; return 1; }
+
+	# Mark mkfs
+	${TOOLS_DIR}/mkfs.${FSTYPE} ${DEVMAP_PART} > /dev/null ||\
+	{ _fail "Failed to mkfs ${DEVMAP_PART}."; return 1; }
+
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark mkfs ||\
+	{ _fail "Failed to mark the end of mkfs."; return 1; }
+
+	# Apply the test and mark it
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark ${aTest}_start ||\
+	{ _fail "Failed to mark the start of test."; return 1; }
+
+	# Mount FS
+	mount -t ${FSTYPE} ${MOUNT_OPTS} ${DEVMAP_PART} ${CCTESTS_MNT}
+	pushd ${DBTESTS_DIR} > /dev/null
+	./sysbench-mysql $threads $RECORDS $TRANS
+	popd > /dev/null
+	# Umount FS
+	umount ${CCTESTS_MNT}
+
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark ${aTest}_end ||\
+	{ _fail "Failed to mark the end of test."; return 1; }
+
+	# Remove log-writes
+	dmsetup remove ${DEVMAP_LOG_WRITES} ||\
+	{ _fail "Failed to remove ${DEVMAP_LOG_WRITES} dm target."; return 1; }
+}

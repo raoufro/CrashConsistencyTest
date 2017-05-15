@@ -1,0 +1,46 @@
+# FIX it - Not Stable
+ckpt_test()
+{
+	[ -z $LOGDEV ] && exit "Must set LOGDEV and REPLAYDEV"
+	[ -z $REPLAYDEV ] && exit "Must set LOGDEV and REPLAYDEV"
+	[ -z $DEVMAP_LOG_WRITES ] && exit "Must set DEVMAP_LOG_WRITES"
+	[ ! -d $LOCALS ] && exit "Must create LOCALS directory"
+
+	gen_xfstests_config consistency_tests
+	apply_test $1
+
+	echo "***** Replaying mkfs *****"
+	ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark mkfs_end)
+	echo "mkfs_end entry is $ENTRY."
+	${TOOLS_DIR}/replay-log --log $LOGDEV --replay $REPLAYDEV --end-mark mkfs_end || _fail "mkfs replay failed-$LINENO" 
+	echo "CKPT after mkfs_end"
+       ${TOOLS_DIR}/dump.f2fs $REPLAYDEV | grep --binary-files=text CKPT
+	echo
+
+	echo -e "Replaying test #$1 ...\n"
+	START_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark $1_start)
+	END_ENTRY=$(${TOOLS_DIR}/replay-log --log $LOGDEV --find --end-mark $1_end)
+	echo "START_ENTRY is $START_ENTRY"
+	echo "END_ENTRY is $END_ENTRY"
+	echo
+
+	sleep 5
+
+	let ENTRY=START_ENTRY
+	while [ $ENTRY -lt $END_ENTRY ]; do
+		echo "***** Entry #$ENTRY *****"
+		${TOOLS_DIR}/replay-log --limit 1 --log $LOGDEV --replay $REPLAYDEV \
+			--start $ENTRY || _fail "replay failed"
+		echo "CKPT after replay"
+		${TOOLS_DIR}/dump.f2fs $REPLAYDEV | grep --binary-files=text CKPT
+		${TOOLS_DIR}/${FSCK} $FSCK_OPTS $REPLAYDEV > /dev/null 2>&1
+		mount -t ${FSTYPE} $REPLAYDEV $CCTESTS_MNT || _fail "mount failed at entry $ENTRY"
+		umount $CCTESTS_MNT
+		echo "CKPT after mount/umount"
+		${TOOLS_DIR}/dump.f2fs $REPLAYDEV | grep --binary-files=text CKPT
+		${TOOLS_DIR}/${FSCK} $FSCK_OPTS $REPLAYDEV > /dev/null 2>&1
+		let ENTRY+=1
+		echo
+	done
+}
+

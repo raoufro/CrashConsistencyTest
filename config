@@ -1,42 +1,48 @@
-# the options of file system
-#FSCK_SCRIPT="./fsck_scripts/fsck_inconsistent.sh"
-FSCK_SCRIPT="./fsck_scripts/fsck_snap.sh"
+### The options for file system creation and mount ###
 FSTYPE="f2fs"
 MKFS_OPTS=""
-MOUNT_OPTS=""
-FSCK="fsck.f2fs"
-FSCK_OPTS="-r"
+MOUNT_OPTS="-o noatime"
 
-# consistency_tests Options
-# log-writes options
-# The partition capturing the write-logs
+### "consistency" tests Options and log-writes options ###
+# The partition capturing the log-writes
 LOGDEV="/dev/sdd"
 # The partition on which the captured logs are replayed
 REPLAYDEV="/dev/sdc"
-# log-writes partion name in device mapper
+# log-writes partition name in device mapper
 DEVMAP_LOG_WRITES="log"
-# write-logs device mount point
+# log-writes device mount point
 CCTESTS_MNT="/mnt/crash_consistency/${FSTYPE}"
 
-# xfstests options
+### db options ###
+# the lua script which is used in sysbench tool
+LUA_SCRIPT="var/lib/dbtests/sysbench-lua/tests/db/oltp_write_only.lua"
+THREADS="1 2 4"
+RECORDS="1000"
+TRANSACTIONS="100"
+
+### File system consistency test script options ###
+# The script which runs after each log replay
+FSCK_SCRIPT="./fsck_scripts/fsck_snap.sh"
+# FSCK tool which is used for checking inconsistency
+FSCK="fsck.f2fs"
+# The options of FSCK tool
+FSCK_OPTS="-r"
+
+### xfstests options
 TEST_DEV="/dev/sdc"
 SCRATCH_DEV="/dev/sdd"
 TEST_DIR="/mnt/xfstests/${FSTYPE}_TEST"
 SCRATCH_MNT="/mnt/xfstests/${FSTYPE}_SCRATCH"
+# which tests are excluded from xfstests
 XFSTESTS_EXCLUDE="xfstests_exclude"
 CCTESTS_EXCLUDE="cctests_exclude"
 
-# dbtests options
-LUA_SCRIPT="var/lib/dbtests/sysbench-lua/tests/db/oltp_write_only.lua"
-THREADS="1 4"
-RECORDS="1000"
-TRANS="100"
-
 # The local root
-LOCALS="/home/roraouf/Projects/CrashConsistencyTest/locals"
+LOCALS="/home/user/CrashConsistencyTest/locals"
 
-# The output directory of xfstest results
-RESULT_DIR="/home/roraouf/Projects/CrashConsistencyTest/results"
+# The result directory
+RESULT_DIR="/home/user/CrashConsistencyTest/results"
 
-# Debug Option
-_DEBUG="OFF"
+# ON - shows the output of FSCK on screen 
+# FIX ME (not save of log)
+DEBUG="OFF" 

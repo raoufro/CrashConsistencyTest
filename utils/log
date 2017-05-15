@@ -2,8 +2,10 @@
 # Print messages in stdout and log file
 #
 # $1 - Log Content
+#
+# Need to define $TESTS_LOG before calling this function
 ##############################
 _log()
 {
-	echo "$(date '+%b %d %X') - $* (${FUNCNAME[2]})"  | tee -a $TESTS_LOG
+	echo "$(date '+%b %d %X') - $* (${FUNCNAME[2]})"  | tee -a ${TESTS_LOG}
 }

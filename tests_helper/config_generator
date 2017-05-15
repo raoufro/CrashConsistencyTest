@@ -1,0 +1,133 @@
+##############################
+# Generate the configuration file of xfstests
+#
+# $1 - The type of tests
+##############################
+gen_xfstests_config()
+{
+	case $1 in
+		xfstests)
+			echo -e "[${FSTYPE}_xfstests]\n"\
+			"TEST_DEV=${TEST_DEV}\n"\
+			"TEST_DIR=${TEST_DIR}\n"\
+			"SCRATCH_DEV=${SCRATCH_DEV}\n"\
+			"SCRATCH_MNT=${SCRATCH_MNT}\n"\
+			"FSTYP=$FSTYPE\n"\
+			"MOUNT_OPTIONS=\"$MOUNT_OPTS\"\n"\
+			"RESULT_BASE=${TESTS_RESULT_DIR}\n"\
+			> $XFSTESTS_DIR/local.config
+			;;
+		consistency_tests)
+			echo -e "[${FSTYPE}_consistency]\n"\
+			"TEST_DEV=$DEVMAP_PART\n"\
+			"TEST_DIR=$CCTESTS_MNT\n"\
+			"FSTYP=$FSTYPE\n"\
+			"MOUNT_OPTIONS=\"$MOUNT_OPTS\"\n"\
+			"RESULT_BASE=${TESTS_RESULT_DIR}"\
+			> $XFSTESTS_DIR/local.config
+			;;
+	esac
+}
+
+##############################
+# Generate the configuration file of dbtests
+##############################
+gen_dbtests_config()
+{
+	echo -e	""\
+	"sysbench_lua_script=${LOCALS}/${LUA_SCRIPT}\n"\
+	"mount_point=${CCTESTS_MNT}\n"\
+	"records_num=${RECORDS}\n"\
+	"trans_num=${TRANSACTIONS}\n"\
+	"result_dir=${TESTS_RESULT_DIR}/dbtests"\
+	> $DBTESTS_DIR/".config"
+}
+
+##############################
+# copy the files containg the excluded tests to xfstests' root directory
+##############################
+gen_exclude()
+{
+	cp excludes/{$XFSTESTS_EXCLUDE,$CCTESTS_EXCLUDE} $XFSTESTS_DIR
+}
+
+##############################
+# Generate a config file for fsck script
+##############################
+gen_fsck_config()
+{
+	local fsck_script
+	local fsck_script_dir
+
+	fsck_script_dir=${FSCK_SCRIPT%/*}			    
+	fsck_script=${FSCK_SCRIPT##*/}
+
+	echo -e ""\
+	"FSTYPE=$FSTYPE\n"\
+	"MNT=$CCTESTS_MNT\n"\
+	"FSCK=$FSCK\n"\
+	"FSCK_OPTS=$FSCK_OPTS\n"\
+	"\n"\
+	"# Log files\n"\
+	"TESTS_LOG=$TESTS_LOG\n"\
+	"TESTS_FSCK_LOG=$TESTS_FSCK_LOG\n"\
+	"\n"\
+	"# Tools Directory\n"\
+	"TOOLS_DIR=${LOCALS}/usr/local/sbin\n"\
+	"\n"\
+	"DEBUG=$DEBUG\n"\
+	> $fsck_script_dir/fsck_config
+
+	case $fsck_script in
+		fsck_snap.sh)
+			dd if=/dev/zero of=cow-dev bs=1M count=1 seek=1048576 2> /dev/null
+			COW_LOOP_DEV=$(losetup -f --show cow-dev)
+			echo -e ""\
+			"# Set up snapshot-origin target\n"\
+			"SNAPSHOTBASE=replay-base\n"\
+			"SNAPSHOTBASE_DEV=/dev/mapper/replay-base\n"\
+			"BLKSIZE=$BLKSIZE\n"\
+			"ORIGIN_TABLE=\"0 $BLKSIZE snapshot-origin $REPLAYDEV\"\n"\
+			"\n"\
+			"# 1TB sparse file as COW device\n"\
+			"COW_LOOP_DEV=$COW_LOOP_DEV\n"\
+			"\n"\
+			"# Set up snapshot target\n"\
+			"SNAPSHOTCOW=replay-cow\n"\
+			"SNAPSHOTCOW_DEV=/dev/mapper/replay-cow\n"\
+			"COW_TABLE=\"0 $BLKSIZE snapshot /dev/mapper/replay-base $COW_LOOP_DEV N 8\"\n"\
+			"TARGET=/dev/mapper/replay-cow\n"\
+			"\n"\
+			"TESTS_CKPT_LOG=$TESTS_CKPT_LOG\n"\
+			>> $fsck_script_dir/fsck_config
+			;;
+		fsck_snap_f2fs_only.sh)
+			dd if=/dev/zero of=cow-dev bs=1M count=1 seek=1048576 2> /dev/null
+			COW_LOOP_DEV=$(losetup -f --show cow-dev)
+			echo -e ""\
+			"# Set up snapshot-origin target\n"\
+			"SNAPSHOTBASE=replay-base\n"\
+			"SNAPSHOTBASE_DEV=/dev/mapper/replay-base\n"\
+			"BLKSIZE=$BLKSIZE\n"\
+			"ORIGIN_TABLE=\"0 $BLKSIZE snapshot-origin $REPLAYDEV\"\n"\
+			"\n"\
+			"# 1TB sparse file as COW device\n"\
+			"COW_LOOP_DEV=$COW_LOOP_DEV\n"\
+			"\n"\
+			"# Set up snapshot target\n"\
+			"SNAPSHOTCOW=replay-cow\n"\
+			"SNAPSHOTCOW_DEV=/dev/mapper/replay-cow\n"\
+			"COW_TABLE=\"0 $BLKSIZE snapshot /dev/mapper/replay-base $COW_LOOP_DEV N 8\"\n"\
+			"TARGET=/dev/mapper/replay-cow\n"\
+			"\n"\
+			"REPLAYDEV=$REPLAYDEV\n"\
+			"TESTS_CKPT_LOG=$TESTS_CKPT_LOG\n"\
+			>> $fsck_script_dir/fsck_config
+			;;
+		fsck_inconsistent.sh)
+			echo -e ""\
+			"TARGET=$REPLAYDEV\n"\
+			>> $fsck_script_dir/fsck_config
+			;;
+	esac
+}
