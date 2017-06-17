@@ -80,8 +80,6 @@ gen_fsck_config()
 
 	case $fsck_script in
 		fsck_snap.sh)
-			dd if=/dev/zero of=cow-dev bs=1M count=1 seek=1048576 2> /dev/null
-			COW_LOOP_DEV=$(losetup -f --show cow-dev)
 			echo -e ""\
 			"# Set up snapshot-origin target\n"\
 			"SNAPSHOTBASE=replay-base\n"\
@@ -90,20 +88,17 @@ gen_fsck_config()
 			"ORIGIN_TABLE=\"0 $BLKSIZE snapshot-origin $REPLAYDEV\"\n"\
 			"\n"\
 			"# 1TB sparse file as COW device\n"\
-			"COW_LOOP_DEV=$COW_LOOP_DEV\n"\
 			"\n"\
 			"# Set up snapshot target\n"\
 			"SNAPSHOTCOW=replay-cow\n"\
 			"SNAPSHOTCOW_DEV=/dev/mapper/replay-cow\n"\
-			"COW_TABLE=\"0 $BLKSIZE snapshot /dev/mapper/replay-base $COW_LOOP_DEV N 8\"\n"\
+			"COW_TABLE=\"0 $BLKSIZE snapshot /dev/mapper/replay-base \$COW_LOOP_DEV N 8\"\n"\
 			"TARGET=/dev/mapper/replay-cow\n"\
 			"\n"\
 			"TESTS_CKPT_LOG=$TESTS_CKPT_LOG\n"\
 			>> $fsck_script_dir/fsck_config
 			;;
 		fsck_snap_f2fs_only.sh)
-			dd if=/dev/zero of=cow-dev bs=1M count=1 seek=1048576 2> /dev/null
-			COW_LOOP_DEV=$(losetup -f --show cow-dev)
 			echo -e ""\
 			"# Set up snapshot-origin target\n"\
 			"SNAPSHOTBASE=replay-base\n"\
@@ -111,13 +106,10 @@ gen_fsck_config()
 			"BLKSIZE=$BLKSIZE\n"\
 			"ORIGIN_TABLE=\"0 $BLKSIZE snapshot-origin $REPLAYDEV\"\n"\
 			"\n"\
-			"# 1TB sparse file as COW device\n"\
-			"COW_LOOP_DEV=$COW_LOOP_DEV\n"\
-			"\n"\
 			"# Set up snapshot target\n"\
 			"SNAPSHOTCOW=replay-cow\n"\
 			"SNAPSHOTCOW_DEV=/dev/mapper/replay-cow\n"\
-			"COW_TABLE=\"0 $BLKSIZE snapshot /dev/mapper/replay-base $COW_LOOP_DEV N 8\"\n"\
+			"COW_TABLE=\"0 $BLKSIZE snapshot /dev/mapper/replay-base \$COW_LOOP_DEV N 8\"\n"\
 			"TARGET=/dev/mapper/replay-cow\n"\
 			"\n"\
 			"REPLAYDEV=$REPLAYDEV\n"\

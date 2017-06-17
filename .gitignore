@@ -3,10 +3,12 @@ src/log-writes-v0.1
 src/xfstests-f2fs
 src/e2fsprogs-v1.43.4
 src/dbtests
+excludes/cctests_exclude
+excludes/xfstests_exclude
 locals/
 results/
-TODO
-cow-dev
+config
 fsck_scripts/fsck_config
-multiple_run.sh
-
+TODO
+multi-test.sh
+cow-dev

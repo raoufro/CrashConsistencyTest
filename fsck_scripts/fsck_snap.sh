@@ -1,5 +1,8 @@
 #!/bin/bash
 
+dd if=/dev/zero of=cow-dev bs=1M count=1 seek=1048576 2> /dev/null
+COW_LOOP_DEV=$(losetup -f --show cow-dev)
+
 . fsck_scripts/fsck_config
 . utils/log
 
@@ -13,6 +16,8 @@ _fail()
 		dmsetup remove -f $SNAPSHOTCOW
 		dmsetup remove -f $SNAPSHOTBASE
 	fi
+	losetup -d $COW_LOOP_DEV &> /dev/null
+	rm -f cow-dev &> /dev/null
 }
 
 echo "########## REPLAYING $ENTRY_NUM ##########" >> ${TESTS_FSCK_LOG}
@@ -75,3 +80,6 @@ if [ $? -ne 0 ]; then
 	dmsetup remove $SNAPSHOTBASE  || \
 { _fail "Removing snapshot-origing failed at entry $ENTRY_NUM."; exit -1; }
 fi
+
+losetup -d $COW_LOOP_DEV &> /dev/null
+rm -f cow-dev &> /dev/null

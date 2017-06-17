@@ -1,5 +1,8 @@
 #!/bin/bash
 
+dd if=/dev/zero of=cow-dev bs=1M count=1 seek=1048576 2> /dev/null
+COW_LOOP_DEV=$(losetup -f --show cow-dev)
+
 . fsck_scripts/fsck_config
 . utils/log
 
@@ -13,6 +16,8 @@ _fail()
 		dmsetup remove -f $SNAPSHOTCOW
 		dmsetup remove -f $SNAPSHOTBASE
 	fi
+	losetup -d $COW_LOOP_DEV &> /dev/null
+        rm -f cow-dev &> /dev/null
 }
 
 # Check the consistency of file system
@@ -26,8 +31,8 @@ fi
 echo "########## REPLAYING $ENTRY_NUM ##########" >> ${TESTS_FSCK_LOG}
 echo "########## REPLAYING $ENTRY_NUM ##########" >> ${TESTS_CKPT_LOG}
 
-CKPT=$(${TOOLS_DIR}/dump.f2fs $REPLAYDEV | grep --binary-files=text CKPT | cut -d= -f2)
-echo -e "CKPT of REPLAYDEV: $CKPT" >> ${TESTS_CKPT_LOG}
+#CKPT=$(${TOOLS_DIR}/dump.f2fs $REPLAYDEV | grep --binary-files=text CKPT | cut -d= -f2)
+#echo -e "CKPT of REPLAYDEV: $CKPT" >> ${TESTS_CKPT_LOG}
 
 # Create snapshot-origin and snapshot targets to prevent changing
 # the disk layout and specifically CKPT after each mount and umount
@@ -89,3 +94,7 @@ fi
 
 CKPT=$(${TOOLS_DIR}/dump.f2fs $REPLAYDEV | grep --binary-files=text CKPT | cut -d= -f2)
 echo -e "CKPT of REPLAYDEV: $CKPT" >> ${TESTS_CKPT_LOG}
+
+losetup -d $COW_LOOP_DEV &> /dev/null
+rm -f cow-dev &> /dev/null
+
