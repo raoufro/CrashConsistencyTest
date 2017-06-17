@@ -1,0 +1,49 @@
+### The options for file system creation and mount ###
+FSTYPE="f2fs"
+MKFS_OPTS=""
+MOUNT_OPTS="-o noatime"
+
+### "consistency" tests Options and log-writes options ###
+# The partition capturing the log-writes
+LOGDEV="/dev/sdb3"
+# The partition on which the captured logs are replayed
+REPLAYDEV="/dev/sdb5"
+# log-writes partition name in device mapper
+DEVMAP_LOG_WRITES="log"
+# log-writes device mount point
+CCTESTS_MNT="/mnt/crash_consistency/${FSTYPE}"
+
+### db options ###
+# the lua script which is used in sysbench tool
+THREADS="1 2 4"
+RECORDS="1000"
+TRANSACTIONS="1000"
+
+### File system consistency test script options ###
+# The script which runs after each log replay
+FSCK_SCRIPT="./fsck_scripts/fsck_snap.sh"
+# FSCK tool which is used for checking inconsistency
+FSCK="fsck.f2fs"
+# The options of FSCK tool
+FSCK_OPTS="-r"
+
+### xfstests options
+TEST_DEV="/dev/sdb3"
+SCRATCH_DEV="/dev/sdb5"
+TEST_DIR="/mnt/xfstests/${FSTYPE}_TEST"
+SCRATCH_MNT="/mnt/xfstests/${FSTYPE}_SCRATCH"
+# which tests are excluded from xfstests
+XFSTESTS_EXCLUDE="xfstests_exclude"
+CCTESTS_EXCLUDE="cctests_exclude"
+
+#Packages
+F2FS_TOOLS="f2fs-tools-v1.8.0"
+
+# The local root
+LOCALS="/home/user/Projects/CrashConsistencyTest/locals"
+
+# The result directory
+RESULT_DIR="/home/user/Projects/CrashConsistencyTest/results"
+
+# ON - shows the output of FSCK on screen 
+DEBUG="OFF" 

@@ -45,8 +45,6 @@ _cleanup()
 	umount $LOGDEV &> /dev/null
 	umount $REPLAYDEV &> /dev/null
 	dmsetup remove $DEVMAP_LOG_WRITES &> /dev/null
-	losetup -d $COW_LOOP_DEV &> /dev/null
-	rm -f cow-dev &> /dev/null
 	# Return to root of tests in case of interruption
 	popd &> /dev/null
 	cp $EXCLUDE_FILE $TESTS_RESULT_DIR
@@ -176,8 +174,8 @@ setup_env()
 	mkdir -p $LOCALS
 	pushd src
 	
-	tar xzvf f2fs-tools-v1.8.0.tar.gz
-	pushd f2fs-tools-v1.8.0
+	tar xzvf ${F2FS_TOOLS}.tar.gz
+	pushd ${F2FS_TOOLS}
 	./autogen.sh
 	./configure
 	make
@@ -221,9 +219,9 @@ clean()
 {
 	pushd src
 	
-	[ -d f2fs-tools-v1.8.0 ] && 
+	[ -d $F2FS_TOOLS ] &&
 	{
-		pushd f2fs-tools-v1.8.0 
+		pushd $F2FS_TOOLS
 		make clean
 		popd
 	}
