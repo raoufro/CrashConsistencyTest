@@ -6,29 +6,34 @@ Requirements
 
 Configurations
 ---------------
-- Check "config" file for provided options
+#cd CrashConsistencyTest
+Setup "config" file based on samples in configs/* and your preferences
+Add your blacklists based on excludes/*
 
 Setup Test Environment
 ---------------
-- #cd CrashConsistencyTest
-Edit config
-- #./CrashConsistencyTest setup_env
+#./CrashConsistencyTest setup_env
 
 Run Tests
 ---------------
 1)xfstests
-./CrashConsistencyTest xfstests single generic/009
-./CrashConsistencyTest xfstests all
+#./CrashConsistencyTest xfstests single generic/009
+#./CrashConsistencyTest xfstests all
 
 2)consistency
-./CrashConsistencyTest consistency all 
-# run generic tests having no mkfs and check consistency after each log replay
+#./CrashConsistencyTest consistency all 
+Run generic tests having no mkfs and check consistency after each log replay
 
-./CrashConsistencyTest consistency single 009 
-# run generic tests 009 and check consistency after each log replay
+#./CrashConsistencyTest consistency single 009 
+Run generic tests 009 and check consistency after each log replay
 
-./CrashConsistencyTest consistency db 
-# run sysbench tool with provided threads, records, transactions and check 
-# consistency after each log replay
+#./CrashConsistencyTest consistency db 
+Run sysbench tool with provided threads, records and transactions and 
+check consistency after each log replay
 
-
+fsck_scripts
+--------------
+fsck_snap.sh is a standard script for checking the consistency.
+fscl_snap_f2fs_only.sh was developed to prove the ckpt sequence in f2fs
+and is exclusive to it.
+f2fs.
