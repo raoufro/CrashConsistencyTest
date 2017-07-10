@@ -12,6 +12,10 @@ _fail()
 {
 	_log $1
 	umount $TARGET &> /dev/null
+	if [ "$FSTYPE" == "f2fs" ]; then
+		echo "########## -d 3 of REPLAYING $ENTRY_NUM ##########" >> ${TESTS_FSCK_LOG}
+		${TOOLS_DIR}/fsck.f2fs -d 3 $TARGET >> ${TESTS_FSCK_LOG}
+	fi
 	if [ -b $SNAPSHOTBASE_DEV ]; then
 		dmsetup remove -f $SNAPSHOTCOW
 		dmsetup remove -f $SNAPSHOTBASE
