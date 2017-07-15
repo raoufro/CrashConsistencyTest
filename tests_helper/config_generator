@@ -14,6 +14,7 @@ gen_xfstests_config()
 			"SCRATCH_MNT=${SCRATCH_MNT}\n"\
 			"FSTYP=$FSTYPE\n"\
 			"MOUNT_OPTIONS=\"$MOUNT_OPTS\"\n"\
+			"MKFS_OPTIONS=\"$MKFS_OPTS\"\n"\
 			"RESULT_BASE=${TESTS_RESULT_DIR}\n"\
 			> $XFSTESTS_DIR/local.config
 			;;
@@ -23,6 +24,7 @@ gen_xfstests_config()
 			"TEST_DIR=$CCTESTS_MNT\n"\
 			"FSTYP=$FSTYPE\n"\
 			"MOUNT_OPTIONS=\"$MOUNT_OPTS\"\n"\
+			"MKFS_OPTIONS=\"$MKFS_OPTS\"\n"\
 			"RESULT_BASE=${TESTS_RESULT_DIR}"\
 			> $XFSTESTS_DIR/local.config
 			;;
@@ -71,6 +73,7 @@ gen_fsck_config()
 	"# Log files\n"\
 	"TESTS_LOG=$TESTS_LOG\n"\
 	"TESTS_FSCK_LOG=$TESTS_FSCK_LOG\n"\
+	"TESTS_TARGET_IMG=$TESTS_TARGET_IMG\n"\
 	"\n"\
 	"# Tools Directory\n"\
 	"TOOLS_DIR=${LOCALS}/usr/local/sbin\n"\
@@ -79,26 +82,7 @@ gen_fsck_config()
 	> $fsck_script_dir/fsck_config
 
 	case $fsck_script in
-		fsck_snap.sh)
-			echo -e ""\
-			"# Set up snapshot-origin target\n"\
-			"SNAPSHOTBASE=replay-base\n"\
-			"SNAPSHOTBASE_DEV=/dev/mapper/replay-base\n"\
-			"BLKSIZE=$BLKSIZE\n"\
-			"ORIGIN_TABLE=\"0 $BLKSIZE snapshot-origin $REPLAYDEV\"\n"\
-			"\n"\
-			"# 1TB sparse file as COW device\n"\
-			"\n"\
-			"# Set up snapshot target\n"\
-			"SNAPSHOTCOW=replay-cow\n"\
-			"SNAPSHOTCOW_DEV=/dev/mapper/replay-cow\n"\
-			"COW_TABLE=\"0 $BLKSIZE snapshot /dev/mapper/replay-base \$COW_LOOP_DEV N 8\"\n"\
-			"TARGET=/dev/mapper/replay-cow\n"\
-			"\n"\
-			"TESTS_CKPT_LOG=$TESTS_CKPT_LOG\n"\
-			>> $fsck_script_dir/fsck_config
-			;;
-		fsck_snap_f2fs_only.sh)
+		"fsck_snap.sh"|"fsck_snap_v2.sh"|"fsck_snap_f2fs_only.sh")
 			echo -e ""\
 			"# Set up snapshot-origin target\n"\
 			"SNAPSHOTBASE=replay-base\n"\
