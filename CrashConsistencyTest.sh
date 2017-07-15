@@ -73,6 +73,62 @@ _inform()
 }
 
 ##############################
+# Check the validity of dm-log-writes operations
+##############################
+check_log_writes()
+{
+	# Get the blocksize of device
+	[ -z $LOGDEV ] && { _fail "Must set LOGDEV and REPLAYDEV."; exit 1; }
+	[ -z $REPLAYDEV ] &&  { _fail "Must set LOGDEV and REPLAYDEV."; exit 1; }
+	[ -z $DEVMAP_LOG_WRITES ] &&  { _fail "Must set DEVMAP_LOG_WRITES."; exit 1; }
+	[ ! -d $LOCALS ] && { _fail "Must create LOCALS directory."; exit 1; }
+
+	EXCLUDE_FILE=excludes/$CCTESTS_EXCLUDE
+	TESTS_RESULT_DIR=$CCTESTS_RESULT_DIR/CHECK-log-writes-$CUR_DATE
+	TESTS_LOG=$TESTS_RESULT_DIR/log
+	BLKSIZE=$(blockdev --getsz $REPLAYDEV)
+
+	# Prepare the Environment
+	mkdir -p ${TESTS_RESULT_DIR}
+	[ -d $CCTESTS_MNT ] || mkdir -p $CCTESTS_MNT
+
+	# Create log-writes
+	TABLE="0 ${BLKSIZE} log-writes ${REPLAYDEV} ${LOGDEV}"
+	dmsetup create ${DEVMAP_LOG_WRITES} --table "${TABLE}"
+
+	# Mark mkfs
+	${TOOLS_DIR}/mkfs.${FSTYPE} ${MKFS_OPTS} ${DEVMAP_PART}
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark mkfs 
+
+	# Mount
+	mount -t ${FSTYPE} ${DEVMAP_PART} ${CCTESTS_MNT}
+
+	# Ask the file and copy and sync
+	while true; do
+		read -p "Enter the absolute path of your file which want to use for dm-log-write verification:" FILEPATH
+		FILENAME=$(basename $FILEPATH)
+		[ -f $FILEPATH ] && break
+	done
+	cp -arv ${FILEPATH} ${CCTESTS_MNT}
+	sync
+	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark fsync
+
+	# Calculate the md5 of file
+	echo "md5 on original copy: $(md5sum ${CCTESTS_MNT}/${FILENAME})" | tee -a $TESTS_LOG
+
+	# Umount and get rid of log device
+	umount ${CCTESTS_MNT}
+	dmsetup remove log
+	
+	# Replay the log
+	${TOOLS_DIR}/replay-log --log ${LOGDEV} --replay ${REPLAYDEV} --end-mark fsync
+	mount -t ${FSTYPE} ${REPLAYDEV} ${CCTESTS_MNT}
+	echo "md5 after log replay: $(md5sum ${CCTESTS_MNT}/${FILENAME})" | tee -a $TESTS_LOG
+	umount ${CCTESTS_MNT}
+	_cleanup "Cleaning up after cheking log-writes."
+}
+
+##############################
 # Run consistency tests
 #
 # $1 single/all/db/single_upto
@@ -91,6 +147,7 @@ consistency()
 	TESTS_LOG=$TESTS_RESULT_DIR/log
 	TESTS_FSCK_LOG=$TESTS_RESULT_DIR/fsck_log
 	TESTS_CKPT_LOG=$TESTS_RESULT_DIR/ckpt_log
+	TESTS_TARGET_IMG=$TESTS_RESULT_DIR/test.img
 
 	# Prepare the Environment
 	mkdir -p ${TESTS_RESULT_DIR}
@@ -189,6 +246,7 @@ setup_env()
 	../configure
 	make
 	make install DESTDIR="$LOCALS/usr/local"
+	sleep 10
 	popd
 	popd
 
@@ -233,8 +291,6 @@ clean()
 		popd
 	}
 
-
-
 	[ -d xfstests-f2fs ] &&
 	{
 		pushd xfstests-f2fs
@@ -278,6 +334,9 @@ case $1 in
 	clean)
 		clean
 		;;
+	check_log_writes)
+		check_log_writes
+		;;
 	xfstests)
 		shift 1
 		xfstests $*
@@ -286,10 +345,6 @@ case $1 in
 		shift 1
 		consistency $*
 		;;
-#	mkfs_ckpt_test)
-#		shift 1
-#		ckpt_test $*
-#		;;
 	*)
 		print_help
 		;;

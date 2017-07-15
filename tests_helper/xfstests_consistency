@@ -61,8 +61,8 @@ apply_test()
 	{ _fail "Failed to setup log-writes target."; return 1; }
 
 	# Mark mkfs
-	${TOOLS_DIR}/mkfs.${FSTYPE} ${DEVMAP_PART} > /dev/null ||\
-	{ _fail "Failed to mkfs ${DEVMAP_PART}."; return 1; }
+	${TOOLS_DIR}/mkfs.${FSTYPE} ${MKFS_OPTS} ${DEVMAP_PART} > /dev/null ||\
+	{ _fail "Failed to mkfs ${MKFS_OPTS} ${DEVMAP_PART}."; return 1; }
 
 	dmsetup message ${DEVMAP_LOG_WRITES} 0 mark mkfs ||\
 	{ _fail "Failed to mark the end of mkfs."; return 1; }
