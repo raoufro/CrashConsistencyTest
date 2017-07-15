@@ -167,6 +167,9 @@ consistency()
 			gen_exclude
 			consistency_single $2 1
 			;;
+		replay)
+			apply_consistency_test $2 1
+			;;
 		all)
 			gen_xfstests_config consistency_tests
 			gen_exclude
@@ -236,6 +239,7 @@ setup_env()
 	./autogen.sh
 	./configure
 	make
+	make install
 	make install DESTDIR="$LOCALS"
 	popd
 
@@ -246,7 +250,6 @@ setup_env()
 	../configure
 	make
 	make install DESTDIR="$LOCALS/usr/local"
-	sleep 10
 	popd
 	popd
 
@@ -324,6 +327,8 @@ Usage: CrashConsistencyTest [help]
 		single test -  a single test
 		single_upto test - a single test from an entry
 		db - a sysbench benchmark
+	consistency: this target is special to replay the logs stored in LOGDEV
+		replay test_name - test_name must match to the name of a test in "log" file
 EOF
 } 
 
