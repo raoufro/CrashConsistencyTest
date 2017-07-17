@@ -100,6 +100,26 @@ gen_fsck_config()
 			"TESTS_CKPT_LOG=$TESTS_CKPT_LOG\n"\
 			>> $fsck_script_dir/fsck_config
 			;;
+		"fsck_snap_v3.sh")
+			echo -e ""\
+			"# Set up snapshot-origin target\n"\
+			"SNAPSHOTBASE=replay-base\n"\
+			"SNAPSHOTBASE_DEV=/dev/mapper/replay-base\n"\
+			"BLKSIZE=$BLKSIZE\n"\
+			"ORIGIN_TABLE=\"0 $BLKSIZE snapshot-origin $REPLAYDEV\"\n"\
+			"\n"\
+			"# Set up snapshot target\n"\
+			"SNAPSHOTCOW=replay-cow\n"\
+			"SNAPSHOTCOW_DEV=/dev/mapper/replay-cow\n"\
+			"COW_TABLE=\"0 $BLKSIZE snapshot /dev/mapper/replay-base \$COW_LOOP_DEV N 8\"\n"\
+			"TARGET=/dev/mapper/replay-cow\n"\
+			"\n"\
+			"REPLAYDEV=$REPLAYDEV\n"\
+			"TESTS_CKPT_LOG=$TESTS_CKPT_LOG\n"\
+			"TESTS_STRACE_LOG=$TESTS_RESULT_DIR/strace.log\n"\
+			>> $fsck_script_dir/fsck_config
+			;;
+
 		fsck_inconsistent.sh)
 			echo -e ""\
 			"TARGET=$REPLAYDEV\n"\
