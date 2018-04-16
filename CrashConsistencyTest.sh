@@ -73,9 +73,9 @@ _inform()
 }
 
 ##############################
-# Check the validity of dm-log-writes operations
+# Verify the validity of dm-log-writes operations
 ##############################
-check_log_writes()
+verify_log_writes()
 {
 	# Get the blocksize of device
 	[ -z $LOGDEV ] && { _fail "Must set LOGDEV and REPLAYDEV."; exit 1; }
@@ -84,7 +84,7 @@ check_log_writes()
 	[ ! -d $LOCALS ] && { _fail "Must create LOCALS directory."; exit 1; }
 
 	EXCLUDE_FILE=excludes/$CCTESTS_EXCLUDE
-	TESTS_RESULT_DIR=$CCTESTS_RESULT_DIR/CHECK-log-writes-$CUR_DATE
+	TESTS_RESULT_DIR=$CCTESTS_RESULT_DIR/verify-log-writes-$CUR_DATE
 	TESTS_LOG=$TESTS_RESULT_DIR/log
 	BLKSIZE=$(blockdev --getsz $REPLAYDEV)
 
@@ -105,7 +105,7 @@ check_log_writes()
 
 	# Ask the file and copy and sync
 	while true; do
-		read -p "Enter the absolute path of your file which want to use for dm-log-write verification:" FILEPATH
+		read -p "Enter the absolute path of your file wanting to use for dm-log-write verification:" FILEPATH
 		FILENAME=$(basename $FILEPATH)
 		[ -f $FILEPATH ] && break
 	done
@@ -131,7 +131,7 @@ check_log_writes()
 ##############################
 # Run consistency tests
 #
-# $1 single/all/db/single_upto
+# $1 single/all/db/single_upto/replay
 # $2 the name of xfstests for single mode
 ##############################
 consistency()
@@ -243,8 +243,8 @@ setup_env()
 	make install DESTDIR="$LOCALS"
 	popd
 
-	tar xzvf e2fsprogs-v1.43.4.tar.gz
-	pushd e2fsprogs-v1.43.4
+	tar xzvf ${EXT4_TOOLS}.tar.gz
+	pushd ${EXT4_TOOLS}
 	mkdir build
 	pushd build
 	../configure
@@ -287,9 +287,9 @@ clean()
 		popd
 	}
 
-	[ -d e2fsprogs-v1.43.4 ] && 
+	[ -d $EXT4_TOOLS ] &&
 	{
-		pushd e2fsprogs-v1.43.4 
+		pushd $EXT4_TOOLS
 		make clean
 		popd
 	}
@@ -307,6 +307,8 @@ clean()
 		make clean
 		popd
 	}
+
+	ldconfig
 
 	popd
 	rm -rf $LOCALS
@@ -327,8 +329,9 @@ Usage: CrashConsistencyTest [help]
 		single test -  a single test
 		single_upto test - a single test from an entry
 		db - a sysbench benchmark
-	consistency: this target is special to replay the logs stored in LOGDEV
-		replay test_name - test_name must match to the name of a test in "log" file
+		replay - replay the last logs already available on DEVLOG
+	verify_log_writes:
+		By making use of md5, verify whether dm-log-writes works properly on this system or not
 EOF
 } 
 
@@ -339,7 +342,7 @@ case $1 in
 	clean)
 		clean
 		;;
-	check_log_writes)
+	verify_log_writes)
 		check_log_writes
 		;;
 	xfstests)

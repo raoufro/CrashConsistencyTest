@@ -12,3 +12,4 @@ fsck_scripts/fsck_config
 TODO
 multi-test.sh
 cow-dev
+*.swp

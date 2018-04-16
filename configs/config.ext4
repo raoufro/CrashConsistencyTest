@@ -38,6 +38,7 @@ CCTESTS_EXCLUDE="cctests_exclude"
 
 #Packages
 F2FS_TOOLS="f2fs-tools-v1.8.0"
+EXT4_TOOLS="e2fsprogs-v1.43.4"
 
 # The local root
 LOCALS="/home/user/Projects/CrashConsistencyTest/locals"
