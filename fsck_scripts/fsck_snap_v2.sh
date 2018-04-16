@@ -33,8 +33,10 @@ else
 	FSCK_DEBUG=">>"
 fi
 
-eval ${TOOLS_DIR}/${FSCK} $FSCK_OPTS ${REPLAYDEV} ${FSCK_DEBUG} ${TESTS_FSCK_LOG} ||\
+set -x
+strace -o ${TESTS_STRACE_LOG} ${TOOLS_DIR}/${FSCK} $FSCK_OPTS ${REPLAYDEV} ||\
 	{ _fail "fsck failed at entry $ENTRY_NUM."; exit -1; }
+set +x
 # Create snapshot-origin and snapshot targets to prevent changing
 # the disk layout and specifically CKPT after each mount and umount
 dmsetup create $SNAPSHOTBASE --table "$ORIGIN_TABLE"

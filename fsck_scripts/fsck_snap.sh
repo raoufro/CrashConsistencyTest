@@ -11,6 +11,7 @@ trap "_fail 'fsck_snap cancelled!'; exit -1;" 2 15
 _fail()
 {
 	_log $1
+	dd if=${TARGET} of=${TESTS_TARGET_IMG} 2> /dev/null
 	umount $TARGET &> /dev/null
 	if [ "$FSTYPE" == "f2fs" ]; then
 		echo "########## -d 3 of REPLAYING $ENTRY_NUM ##########" >> ${TESTS_FSCK_LOG}
@@ -25,7 +26,15 @@ _fail()
 }
 
 echo "########## REPLAYING $ENTRY_NUM ##########" >> ${TESTS_FSCK_LOG}
+# Check the consistency of file system
+if [ $DEBUG == "ON" ]; then
+	FSCK_DEBUG="| tee -a"
+else
+	FSCK_DEBUG=">>"
+fi
 
+eval ${TOOLS_DIR}/${FSCK} $FSCK_OPTS ${REPLAYDEV} ${FSCK_DEBUG} ${TESTS_FSCK_LOG} ||\
+	{ _fail "fsck failed at entry $ENTRY_NUM."; exit -1; }
 # Create snapshot-origin and snapshot targets to prevent changing
 # the disk layout and specifically CKPT after each mount and umount
 dmsetup create $SNAPSHOTBASE --table "$ORIGIN_TABLE"
@@ -36,25 +45,15 @@ then
 	# again.
 	sleep 1
 	dmsetup create $SNAPSHOTBASE --table "$ORIGIN_TABLE" || \
-		{ _fail "Creating snapshot-origin target failed at entry $ENTRY_NUM."; exit -1; }
+	{ _fail "Creating snapshot-origin target failed at entry $ENTRY_NUM."; exit -1; }
 fi
 
 dmsetup create $SNAPSHOTCOW --table "$COW_TABLE" 
 if [ $? -ne 0 ]; then
 	sleep 1
 	dmsetup create $SNAPSHOTCOW --table "$COW_TABLE" || \
-		{ _fail "Creating snapshot target failed at entry $ENTRY_NUM."; exit -1; }
+	{ _fail "Creating snapshot target failed at entry $ENTRY_NUM."; exit -1; }
 fi
-
-# Check the consistency of file system
-if [ $DEBUG == "ON" ]; then
-	FSCK_DEBUG="| tee -a"
-else
-	FSCK_DEBUG=">>"
-fi
-
-eval ${TOOLS_DIR}/${FSCK} $FSCK_OPTS $TARGET ${FSCK_DEBUG} ${TESTS_FSCK_LOG} ||\
-	{ _fail "fsck failed at entry $ENTRY_NUM."; exit -1; }
 
 
 mount -t ${FSTYPE} $TARGET $MNT ||\
@@ -82,7 +81,7 @@ dmsetup remove -f $SNAPSHOTBASE
 if [ $? -ne 0 ]; then
 	sleep 1
 	dmsetup remove $SNAPSHOTBASE  || \
-{ _fail "Removing snapshot-origing failed at entry $ENTRY_NUM."; exit -1; }
+	{ _fail "Removing snapshot-origing failed at entry $ENTRY_NUM."; exit -1; }
 fi
 
 losetup -d $COW_LOOP_DEV &> /dev/null
