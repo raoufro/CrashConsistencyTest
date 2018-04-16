@@ -8,32 +8,38 @@ Configurations
 ---------------
 #cd CrashConsistencyTest
 Setup "config" file based on samples in configs/* and your preferences
-Add your blacklists based on excludes/*
+Add your blacklists of xfstests based on excludes/*
 
 Setup Test Environment
 ---------------
-#./CrashConsistencyTest setup_env
+#./CrashConsistencyTest.sh setup_env
 
 Run Tests
 ---------------
-1)xfstests
-#./CrashConsistencyTest xfstests single generic/009
-#./CrashConsistencyTest xfstests all
+1)xfstests - runs "xfstests" as regression tests
+#./CrashConsistencyTest.sh xfstests single generic/009
+#./CrashConsistencyTest.sh xfstests all
 
-2)consistency
-#./CrashConsistencyTest consistency all 
-Run generic tests having no mkfs and check consistency after each log replay
+2)verify_log_writes - verifies that dm-log-writes works properly
+#./CrashConsistencyTest.sh verify_log_writes
 
-#./CrashConsistencyTest consistency single 009 
-Run generic tests 009 and check consistency after each log replay
+3)consistency - checks the consistency of FS during a selected operation
+#./CrashConsistencyTest.sh consistency all 
+runs generic tests having no mkfs and checks consistency after each log replay
+
+#./CrashConsistencyTest.sh consistency single 009 
+runs generic test number 009 and checks consistency after each log replay
 
 #./CrashConsistencyTest consistency db 
-Run sysbench tool with provided threads, records and transactions and 
-check consistency after each log replay
+runs sysbench benchmark based on provided threads, records and transactions in
+config file and checks consistency after each log replay
 
 fsck_scripts
 --------------
-fsck_snap.sh is a standard script for checking the consistency.
-fscl_snap_f2fs_only.sh was developed to prove the ckpt sequence in f2fs
-and is exclusive to it.
-f2fs.
+- fsck_snap.sh is a standard script for checking the consistency.
+- fsck_snap_v2.sh is like fsck_snap.sh but collects the output of strace when
+fsck runs to assure us the first run of fsck doesn't change the contents of 
+the disk. 
+- fsck_snap_f2fs_only.sh was developed to prove the CKPT sequence in f2fs (to 
+verify the correctness of sanpshotting process in fsck_scripts),
+and it is exclusive to it.
